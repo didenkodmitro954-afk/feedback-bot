@@ -235,5 +235,5 @@ async def forward_to_admins(msg: Message):
 async def main():
     await dp.start_polling(bot)
 
-if name == "main":
+if __name__ == "_main__":
     asyncio.run(main())

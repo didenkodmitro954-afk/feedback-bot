@@ -1,53 +1,80 @@
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
 from database import *
 
-# Твій Telegram ID — головний адмін
 MAIN_ADMIN_ID = 1540349061
-
 TOKEN = os.getenv("BOT_TOKEN")
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-reply_mode = {}  # якщо адмін відповідає користувачу
+reply_mode = {}  # адмін відповідає користувачу
 
-# ---------------- Додати головного адміна ----------------
+# Додати головного адміна
 add_admin(MAIN_ADMIN_ID)
 
 # ---------------- /start ----------------
-@dp.message()
-async def start_handler(msg: types.Message):
-    if msg.text == "/start":
-        uid = msg.from_user.id
-        username = msg.from_user.username or "NoName"
-        add_user(uid, username)
+@dp.message(Command("start"))
+async def cmd_start(msg: types.Message):
+    uid = msg.from_user.id
+    username = msg.from_user.username or "NoName"
 
-        # повідомляємо всім адмінам
+    # Перевіряємо, чи користувач новий
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users WHERE id=?", (uid,))
+    existing = cursor.fetchone()
+
+    add_user(uid, username)
+
+    # Якщо новий — повідомляємо адмінам
+    if not existing:
         admins = get_all_admins()
         for admin in admins:
             await bot.send_message(
                 admin,
-                f"🆕 Новий користувач зареєструвався!\n"
-                f"👤 Username: @{username}\n"
-                f"🆔 ID: {uid}"
+                f"🆕 Новий користувач зареєструвався!\n👤 @{username}\n🆔 {uid}"
             )
 
-        # повідомлення користувачу
-        await msg.answer(
-            f"👋 Привіт, {username}!\n"
-            "Ти можеш надіслати мені повідомлення, і наші адміни його отримають.\n"
-            "Напиши щось нижче ⬇️"
-        )
+    # Повідомлення користувачу
+    await msg.answer(
+        f"👋 Привіт, {username}!\n"
+        "Ти можеш надіслати повідомлення, і наші адміни його отримають.\n"
+        "Також можна приєднатись до розіграшів через /join <id>."
+    )
+
+# ---------------- /join ----------------
+@dp.message(Command("join"))
+async def cmd_join(msg: types.Message):
+    uid = msg.from_user.id
+    try:
+        gid = int(msg.text.split()[1])
+        join_giveaway(uid, gid)
+        await msg.answer(f"🎉 Ти приєднався до розіграшу {gid}")
+    except:
+        await msg.answer("❌ Використовуй: /join <id>")
+
+# ---------------- /giveaways ----------------
+@dp.message(Command("giveaways"))
+async def cmd_giveaways(msg: types.Message):
+    gvs = get_giveaways()
+    if not gvs:
+        await msg.answer("Немає розіграшів")
+        return
+    response = "🎁 Розіграші:\n"
+    for g in gvs:
+        response += f"{g[0]}: {g[1]}\n"
+    await msg.answer(response)
 
 # ---------------- Повідомлення ----------------
 @dp.message()
-async def message_handler(msg: types.Message):
+async def all_messages(msg: types.Message):
     uid = msg.from_user.id
     text = msg.text
     admins = get_all_admins()
 
-    # якщо адмін зараз відповідає користувачу
+    # Адмін відповідає користувачу
     if uid in reply_mode:
         target_uid = reply_mode[uid]
         await bot.send_message(target_uid, f"✉️ Від адміністратора:\n{text}")
@@ -55,24 +82,23 @@ async def message_handler(msg: types.Message):
         reply_mode.pop(uid)
         return
 
-    # Адмін-команди
+    # Адмінські команди
     if uid in admins:
-        # всі адміни бачать /ahelp
         if text == "/ahelp":
             commands = [
                 "/ahelp — показати список команд адміна",
                 "/reply <id> — відповісти користувачу",
+                "/giveaways — перегляд розіграшів"
             ]
-            # якщо головний адмін — додаємо команди для управління адмінами
             if uid == MAIN_ADMIN_ID:
                 commands += [
                     "/addadmin <id> — додати адміна",
-                    "/removeadmin <id> — видалити адміна"
+                    "/removeadmin <id> — видалити адміна",
+                    "/create <назва> — створити розіграш"
                 ]
             await msg.answer("⚙️ Доступні команди:\n" + "\n".join(commands))
             return
 
-        # тільки головний адмін може додавати/видаляти інших адмінів
         if uid == MAIN_ADMIN_ID:
             if text.startswith("/addadmin"):
                 try:
@@ -92,7 +118,15 @@ async def message_handler(msg: types.Message):
                     await msg.answer("❌ Використовуй /removeadmin <id> правильно")
                 return
 
-        # всі адміни можуть відповісти користувачу
+            if text.startswith("/create"):
+                title = text.replace("/create","").strip()
+                if not title:
+                    await msg.answer("❌ Вкажи назву розіграшу")
+                    return
+                create_giveaway(title)
+                await msg.answer(f"🎁 Розіграш створено: {title}")
+                return
+
         if text.startswith("/reply"):
             try:
                 target = int(text.split()[1])
@@ -102,7 +136,7 @@ async def message_handler(msg: types.Message):
                 await msg.answer("❌ Використовуй /reply <id> правильно")
             return
 
-    # Звичайне повідомлення користувача → пересилаємо всім адмінам
+    # Звичайне повідомлення користувача → надсилаємо всім адмінам
     if uid not in admins:
         for admin in admins:
             await bot.send_message(

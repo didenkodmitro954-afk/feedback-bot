@@ -6,7 +6,7 @@ import sqlite3
 import asyncio
 
 # ---------------- Налаштування ----------------
-TOKEN = "ВСТАВ_СВІЙ_ТОКЕН"
+TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"
 OWNER_USERNAME = "userveesna"
 
 logging.basicConfig(level=logging.INFO)

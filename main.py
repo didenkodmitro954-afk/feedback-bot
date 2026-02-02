@@ -1,118 +1,92 @@
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from database import *
 
 TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()  # v3
 
-# ---------------- Меню ----------------
-def main_menu(user_id):
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("🎁 Розіграші"))
-    if user_id in get_all_admins():
-        kb.add(KeyboardButton("⚙️ Адмін панель"))
-    return kb
-
-def admin_panel():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(
-        KeyboardButton("➕ Додати адміна"),
-        KeyboardButton("➖ Видалити адміна"),
-        KeyboardButton("🎁 Створити розіграш")
-    )
-    kb.add(KeyboardButton("⬅️ Назад"))
-    return kb
-
-# ---------------- Стани ----------------
-admin_mode = {}  # режим адміна
+admin_mode = {}  # режим адміна для вводу ID або назви розіграшу
 
 # ---------------- /start ----------------
 @dp.message()
 async def start_handler(msg: types.Message):
     if msg.text == "/start":
         add_user(msg.from_user.id, msg.from_user.username or "NoName")
-        await msg.answer("👋 Вітаю! Вибери дію:", reply_markup=main_menu(msg.from_user.id))
+        await msg.answer("👋 Вітаю! Використовуй команди:\n/giveaway — побачити розіграші")
 
-# ---------------- Кнопки ----------------
+# ---------------- /giveaway ----------------
 @dp.message()
-async def buttons_handler(msg: types.Message):
-    text = msg.text
-    uid = msg.from_user.id
-    admins = get_all_admins()
-
-    if text == "⚙️ Адмін панель" and uid in admins:
-        await msg.answer("⚙️ Адмін панель", reply_markup=admin_panel())
-        return
-
-    if text == "⬅️ Назад" and uid in admins:
-        await msg.answer("🔙 Головне меню", reply_markup=main_menu(uid))
-        admin_mode.pop(uid, None)
-        return
-
-    if text == "➕ Додати адміна" and uid in admins:
-        admin_mode[uid] = "add_admin"
-        await msg.answer("Введи ID користувача для призначення адміном")
-        return
-
-    if text == "➖ Видалити адміна" and uid in admins:
-        admin_mode[uid] = "remove_admin"
-        await msg.answer("Введи ID адміна для видалення")
-        return
-
-    if text == "🎁 Створити розіграш" and uid in admins:
-        admin_mode[uid] = "create_giveaway"
-        await msg.answer("Введи назву розіграшу")
-        return
-
-    # обробка режиму адміна
-    if uid in admin_mode:
-        mode = admin_mode[uid]
-        if mode == "add_admin":
-            try:
-                add_admin(int(text))
-                await msg.answer("✅ Користувач став адміном")
-            except:
-                await msg.answer("❌ Невірний ID")
-            admin_mode.pop(uid)
-            return
-        elif mode == "remove_admin":
-            try:
-                remove_admin(int(text))
-                await msg.answer("✅ Адмін видалений")
-            except:
-                await msg.answer("❌ Невірний ID")
-            admin_mode.pop(uid)
-            return
-        elif mode == "create_giveaway":
-            create_giveaway(text)
-            await msg.answer(f"🎁 Розіграш створено: {text}")
-            admin_mode.pop(uid)
-            return
-
-    # Розіграші для користувачів
-    if text == "🎁 Розіграші":
+async def giveaway_handler(msg: types.Message):
+    if msg.text == "/giveaway":
         gvs = get_giveaways()
         if not gvs:
             await msg.answer("Немає розіграшів")
             return
+        response = "🎁 Розіграші:\n"
         for g in gvs:
-            kb = InlineKeyboardMarkup()
-            kb.add(InlineKeyboardButton("✅ Участь", callback_data=f"join_{g[0]}"))
-            await msg.answer(f"🎁 {g[1]}", reply_markup=kb)
+            response += f"{g[0]}: {g[1]} — приєднатися: /join{g[0]}\n"
+        await msg.answer(response)
 
-# ---------------- Callback ----------------
-@dp.callback_query()
-async def giveaway_callback(c: types.CallbackQuery):
-    if c.data.startswith("join_"):
-        await c.answer("Ти взяв участь у розіграші!")
+# ---------------- /join<ID> ----------------
+@dp.message()
+async def join_handler(msg: types.Message):
+    if msg.text.startswith("/join"):
+        try:
+            gid = int(msg.text.replace("/join",""))
+            join_giveaway(msg.from_user.id, gid)
+            await msg.answer(f"✅ Ти приєднався до розіграшу {gid}")
+        except:
+            await msg.answer("❌ Невірний розіграш")
 
-# ---------------- Запуск ----------------
-async def main():
-    print("Bot started")
-    await dp.start_polling(bot)
+# ---------------- Адмін-команди ----------------
+@dp.message()
+async def admin_handler(msg: types.Message):
+    uid = msg.from_user.id
+    admins = get_all_admins()
 
-if __name__ == "__main__":
-    asyncio.run(main())
+    if uid not in admins:
+        return
+
+    text = msg.text
+
+    # список адмін-команд
+    if text == "/ahelp":
+        help_text = (
+            "/ahelp — список команд адміна\n"
+            "/addadmin <id> — додати адміна\n"
+            "/removeadmin <id> — видалити адміна\n"
+            "/create <назва> — створити розіграш\n"
+        )
+        await msg.answer(help_text)
+        return
+
+    if text.startswith("/addadmin"):
+        try:
+            new_id = int(text.split()[1])
+            add_admin(new_id)
+            await msg.answer(f"✅ Користувач {new_id} став адміном")
+        except:
+            await msg.answer("❌ Використовуй /addadmin <id> правильно")
+        return
+
+    if text.startswith("/removeadmin"):
+        try:
+            rem_id = int(text.split()[1])
+            remove_admin(rem_id)
+            await msg.answer(f"✅ Адмін {rem_id} видалений")
+        except:
+            await msg.answer("❌ Використовуй /removeadmin <id> правильно")
+        return
+
+    if text.startswith("/create"):
+        try:
+            title = text.replace("/create","").strip()
+            if not title:
+                await msg.answer("❌ Вкажи назву розіграшу")
+                return
+            create_giveaway(title)
+            await msg.answer(f"🎁 Розіграш створено: {title}")
+        except:
+            await msg.answer("❌ Сталася помилка")

@@ -90,21 +90,6 @@ async def start(msg: types.Message):
     )
     await msg.answer(welcome_text)
 
-# ---------------- ЗВОРОТНИЙ ЗВ'ЯЗОК ----------------
-@dp.message()
-async def feedback(msg: types.Message):
-    if is_admin(msg.from_user.username):
-        return  # адміністратор пише — нічого не робимо
-    # повідомлення користувачем
-    await msg.answer("✅ Ваше повідомлення отримано! Очікуйте відповіді адміністратора.")
-    for admin in get_admins():
-        admin_id = get_user_id(admin)
-        if admin_id:
-            try:
-                await bot.send_message(admin_id,
-                                       f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}")
-            except: pass
-
 # ---------------- АДМІН КОМАНДИ ----------------
 @dp.message(Command("ahelp"))
 async def ahelp(msg: types.Message):
@@ -199,6 +184,22 @@ async def close_raffle(msg: types.Message):
                 await bot.send_message(user_id, f"🎉 Розіграш {raffle_id} завершено! Переможець: @{winner}")
     except:
         await msg.answer("❌ Використання: /closeraffle <raffle_id>")
+
+# ---------------- ЗВОРОТНИЙ ЗВ'ЯЗОК ----------------
+@dp.message()
+async def feedback(msg: types.Message):
+    # Повідомлення користувачем
+    if is_admin(msg.from_user.username):
+        return  # адміністратор пише — нічого не робимо
+    add_user(msg.from_user.id, msg.from_user.username)
+    await msg.answer("✅ Ваше повідомлення отримано! Очікуйте відповіді адміністратора.")
+    for admin in get_admins():
+        admin_id = get_user_id(admin)
+        if admin_id:
+            try:
+                await bot.send_message(admin_id,
+                                       f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}")
+            except: pass
 
 # ---------------- ЗАПУСК ----------------
 async def main():

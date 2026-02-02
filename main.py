@@ -7,7 +7,7 @@ from database import *
 TOKEN = os.getenv("BOT_TOKEN")
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()  # v3 не передаємо bot сюди
 
 # ------------------ Кнопки ------------------
 def main_menu(user_id):
@@ -30,25 +30,22 @@ def admin_panel():
     return kb
 
 # ------------------ Стани ------------------
-admin_mode = {}  # що зараз робить адмін
-reply_mode = {}  # для відповіді конкретному користувачу
+admin_mode = {}   # що зараз робить адмін
+reply_mode = {}   # для відповіді конкретному користувачу
 
 # ------------------ /start ------------------
-@dp.message_handler(commands=["start"])
+@dp.message()
 async def start(msg: types.Message):
-    add_user(msg.from_user.id, msg.from_user.username or "NoName")
-    await msg.answer("👋 Вітаю! Вибери дію:", reply_markup=main_menu(msg.from_user.id))
+    if msg.text == "/start":
+        add_user(msg.from_user.id, msg.from_user.username or "NoName")
+        await msg.answer("👋 Вітаю! Вибери дію:", reply_markup=main_menu(msg.from_user.id))
 
 # ------------------ Користувач → адміністратор ------------------
-@dp.message_handler(lambda m: m.text == "📩 Написати адміну")
-async def write_admin(msg: types.Message):
-    await msg.answer("✍️ Напиши повідомлення, я передам адміну")
+@dp.message()
+async def user_message(msg: types.Message):
+    if msg.text in ["⚙️ Адмін панель","⬅️ Назад","📨 Повідомлення","➕ Додати адміна","📜 Лог дій","🎁 Розіграші адмін","🎁 Розіграші","📩 Написати адміну"]:
+        return
 
-@dp.message_handler(lambda m: m.text not in [
-    "⚙️ Адмін панель","⬅️ Назад","📨 Повідомлення","➕ Додати адміна",
-    "📜 Лог дій","🎁 Розіграші адмін","🎁 Розіграші"
-])
-async def forward_to_admin(msg: types.Message):
     for admin in get_all_admins():
         await bot.send_message(
             admin,
@@ -57,81 +54,88 @@ async def forward_to_admin(msg: types.Message):
     await msg.answer("✅ Повідомлення надіслано адміну")
 
 # ------------------ Адмін панель ------------------
-@dp.message_handler(lambda m: m.text == "⚙️ Адмін панель")
-async def open_admin(msg: types.Message):
-    if msg.from_user.id not in get_all_admins(): return
-    await msg.answer("⚙️ Адмін панель", reply_markup=admin_panel())
+@dp.message()
+async def admin_panel_handler(msg: types.Message):
+    uid = msg.from_user.id
+    text = msg.text
+    admins = get_all_admins()
 
-@dp.message_handler(lambda m: m.text == "⬅️ Назад")
-async def back(msg: types.Message):
-    await msg.answer("🔙 Головне меню", reply_markup=main_menu(msg.from_user.id))
-    admin_mode.pop(msg.from_user.id, None)
-
-# ------------------ Додати адміна ------------------
-@dp.message_handler(lambda m: m.text == "➕ Додати адміна")
-async def add_admin_mode(msg: types.Message):
-    if msg.from_user.id not in get_all_admins(): return
-    admin_mode[msg.from_user.id] = "add_admin"
-    await msg.answer("✍️ Введи ID користувача для призначення адміном:")
-
-# ------------------ Лог дій ------------------
-@dp.message_handler(lambda m: m.text == "📜 Лог дій")
-async def show_logs(msg: types.Message):
-    if msg.from_user.id not in get_all_admins(): return
-    logs = get_logs()
-    text = "📜 Останні дії адмінів:\n"
-    for log in logs:
-        text += f"{log[1]} → {log[2]} {log[3] or ''} ({log[4]})\n"
-    await msg.answer(text or "Немає логів")
-
-# ------------------ Розіграші ------------------
-@dp.message_handler(lambda m: m.text in ["🎁 Розіграші","🎁 Розіграші адмін"])
-async def giveaways(msg: types.Message):
-    if msg.text == "🎁 Розіграші":
+    # відкрити панель
+    if text == "⚙️ Адмін панель" and uid in admins:
+        await msg.answer("⚙️ Адмін панель", reply_markup=admin_panel())
+        return
+    # назад
+    if text == "⬅️ Назад" and uid in admins:
+        await msg.answer("🔙 Головне меню", reply_markup=main_menu(uid))
+        admin_mode.pop(uid,None)
+        return
+    # додати адміна
+    if text == "➕ Додати адміна" and uid in admins:
+        admin_mode[uid] = "add_admin"
+        await msg.answer("✍️ Введи ID користувача для призначення адміном")
+        return
+    # лог дій
+    if text == "📜 Лог дій" and uid in admins:
+        logs = get_logs()
+        txt = "📜 Останні дії адмінів:\n"
+        for log in logs:
+            txt += f"{log[1]} → {log[2]} {log[3] or ''} ({log[4]})\n"
+        await msg.answer(txt or "Немає логів")
+        return
+    # створити розіграш
+    if text == "🎁 Розіграші адмін" and uid in admins:
+        admin_mode[uid] = "create_giveaway"
+        await msg.answer("✍️ Введи назву розіграшу")
+        return
+    # перегляд розіграшів для користувача
+    if text == "🎁 Розіграші" and uid not in admins:
         gvs = get_giveaways()
-        if not gvs: await msg.answer("Немає розіграшів")
+        if not gvs:
+            await msg.answer("Немає розіграшів")
         for g in gvs:
             kb = InlineKeyboardMarkup()
             kb.add(InlineKeyboardButton("✅ Участь", callback_data=f"join_{g[0]}"))
             await msg.answer(f"🎁 {g[1]}", reply_markup=kb)
-    else:
-        admin_mode[msg.from_user.id] = "create_giveaway"
-        await msg.answer("✍️ Введи назву розіграшу:")
+        return
+
+    # якщо зараз вводимо щось для адмін панелі
+    if uid in admin_mode:
+        mode = admin_mode[uid]
+        if mode == "add_admin":
+            try:
+                new_admin = int(text)
+                add_admin(new_admin)
+                add_log(uid,"Додано адміна",target_user=new_admin)
+
+await msg.answer("✅ Користувач став адміном")
+            except:
+                await msg.answer("❌ Невірний ID")
+        elif mode == "create_giveaway":
+            create_giveaway(text)
+            add_log(uid,"Створено розіграш",info=text)
+            await msg.answer(f"🎁 Розіграш створено: {text}")
+        admin_mode.pop(uid)
+
+    # якщо відповідаємо конкретному користувачу
+    if uid in reply_mode:
+        target_uid = reply_mode[uid]
+        await bot.send_message(target_uid,f"✉️ Від адміністратора:\n{text}")
+        add_log(uid,"Відповідь користувачу",target_user=target_uid,info=text)
+        await msg.answer("✅ Відповідь надіслана")
+        reply_mode.pop(uid)
 
 # ------------------ Callback для розіграшів ------------------
-@dp.callback_query_handler(lambda c: c.data.startswith("join_"))
-async def join_callback(c: types.CallbackQuery):
-    gid = int(c.data.split("_")[1])
-    join_giveaway(c.from_user.id, gid)
-    await c.answer("Ти взяв участь у розіграші!")
-
-# ------------------ Обробка вводу адміна ------------------
-@dp.message_handler(lambda m: m.from_user.id in admin_mode)
-async def admin_input(msg: types.Message):
-    mode = admin_mode.get(msg.from_user.id)
-    if mode == "add_admin":
-        try:
-            new_admin = int(msg.text)
-            add_admin(new_admin)
-            add_log(msg.from_user.id,"Додано адміна",target_user=new_admin)
-            await msg.answer("✅ Користувач став адміном")
-        except:
-            await msg.answer("❌ Невірний ID")
-    elif mode == "create_giveaway":
-        create_giveaway(msg.text)
-        add_log(msg.from_user.id,"Створено розіграш",info=msg.text)
-        await msg.answer(f"🎁 Розіграш створено: {msg.text}")
-    admin_mode.pop(msg.from_user.id)
-
-# ------------------ Відповідь конкретному користувачу ------------------
-@dp.message_handler(lambda m: m.text and m.from_user.id in reply_mode)
-async def reply_user(msg: types.Message):
-    uid = reply_mode[msg.from_user.id]
-    await bot.send_message(uid,f"✉️ Від адміністратора:\n{msg.text}")
-    add_log(msg.from_user.id,"Відповідь користувачу",target_user=uid,info=msg.text)
-    await msg.answer("✅ Відповідь надіслана")
-    reply_mode.pop(msg.from_user.id)
+@dp.callback_query()
+async def giveaway_callback(c: types.CallbackQuery):
+    if c.data.startswith("join_"):
+        gid = int(c.data.split("_")[1])
+        join_giveaway(c.from_user.id, gid)
+        await c.answer("Ти взяв участь у розіграші!")
 
 # ------------------ Запуск ------------------
+async def main():
+    print("Bot started")
+    await dp.start_polling(bot)
+
 if __name__ == "__main__":
-    asyncio.run(dp.start_polling(bot))
+    asyncio.run(main())

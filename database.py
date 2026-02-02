@@ -36,4 +36,29 @@ conn.commit()
 # ---------------- Функції ----------------
 
 def add_user(user_id, username):
-    cursor.execute("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?
+    cursor.execute("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", (user_id, username))
+    conn.commit()
+
+def add_admin(admin_id):
+    cursor.execute("INSERT OR IGNORE INTO admins (id) VALUES (?)", (admin_id,))
+    conn.commit()
+
+def remove_admin(admin_id):
+    cursor.execute("DELETE FROM admins WHERE id=?", (admin_id,))
+    conn.commit()
+
+def get_all_admins():
+    cursor.execute("SELECT id FROM admins")
+    return [x[0] for x in cursor.fetchall()]
+
+def create_giveaway(title):
+    cursor.execute("INSERT INTO giveaways (title) VALUES (?)", (title,))
+    conn.commit()
+
+def join_giveaway(user_id, giveaway_id):
+    cursor.execute("INSERT INTO giveaway_users (user_id, giveaway_id) VALUES (?, ?)", (user_id, giveaway_id))
+    conn.commit()
+
+def get_giveaways():
+    cursor.execute("SELECT * FROM giveaways")
+    return cursor.fetchall()

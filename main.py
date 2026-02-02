@@ -116,7 +116,6 @@ async def ahelp(msg: types.Message):
         "/addadmin @username — додати адміна\n"
         "/deladmin @username — видалити адміна\n"
         "/createraffle Назва | Опис | Кількість днів — створити розіграш\n"
-        "/joinraffle <raffle_id> — приєднатися до розіграшу (для користувачів)\n"
         "/closeraffle <raffle_id> — закрити розіграш та оголосити переможця\n"
     )
 

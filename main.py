@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
 # ================= НАСТРОЙКИ =================
-TOKEN = "8334017254:AAH8KO-MhPXcm6rcp3qMMnWvQtBF5uD7Esc"
+TOKEN = "8511337609:AAFNtvQWoD4rhyYugouVgsspw0FKorm-rDM"
 OWNER_USERNAME = "userveesna"  # головний адмін
 
 logging.basicConfig(level=logging.INFO)

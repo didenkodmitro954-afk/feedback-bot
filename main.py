@@ -56,3 +56,24 @@ async def start(message: types.Message):
         f"Ваш баланс: {get_balance(message.from_user.id)} монет.\n"
         "Напиши повідомлення — адміністратор його отримає."
     )
+
+admin_chats = {}  # Словник для тимчасового відстеження, кому адмін пише
+
+@dp.message()
+async def feedback(message: types.Message):
+    if message.from_user.id != ADMIN_ID:
+        # Повідомлення користувача → адміну
+        await bot.send_message(
+            ADMIN_ID,
+            f"📩 Нове повідомлення від @{message.from_user.username} (ID: {message.from_user.id}):\n\n{message.text}"
+        )
+        await message.answer("✅ Ваше повідомлення надіслано адміну!")
+    else:
+        # Адмін пише: формат "ID текст"
+        try:
+            target_id, text = message.text.split(" ", 1)
+            target_id = int(target_id)
+            await bot.send_message(target_id, f"✉️ Від адміністратора: {text}")
+            await message.answer(f"✅ Відповідь надіслана користувачу {target_id}")
+        except:
+            await message.answer("❌ Формат для відповіді: ID текст")

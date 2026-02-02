@@ -43,3 +43,16 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
+from database import add_user, get_balance, update_balance
+
+@dp.message(CommandStart())
+async def start(message: types.Message):
+    # Реєструємо користувача в базі
+    add_user(message.from_user.id, message.from_user.username or "NoName")
+    
+    await message.answer(
+        f"👋 Привіт, @{message.from_user.username}!\n"
+        f"Ваш баланс: {get_balance(message.from_user.id)} монет.\n"
+        "Напиши повідомлення — адміністратор його отримає."
+    )

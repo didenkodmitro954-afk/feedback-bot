@@ -7,7 +7,7 @@ from datetime import datetime
 
 # ---------------- Налаштування ----------------
 TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"
-OWNER_ID = 1540349061  # твій Telegram ID
+OWNER_USERNAME = "userveesna"  # головний адмін
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS admins (
-    admin_id INTEGER PRIMARY KEY
+    username TEXT PRIMARY KEY
 )
 """)
 cur.execute("""
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS giveaway_users (
 conn.commit()
 
 # Додаємо головного адміна
-cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (OWNER_ID,))
+cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (OWNER_USERNAME,))
 conn.commit()
 
 # ---------------- Функції ----------------
@@ -65,19 +65,24 @@ def was_notified(user_id):
     return res[0] == 1 if res else False
 
 def get_users():
-    cur.execute("SELECT user_id FROM users")
+    cur.execute("SELECT username FROM users")
     return [x[0] for x in cur.fetchall()]
 
-def add_admin(admin_id):
-    cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (admin_id,))
+def get_user_id(username):
+    cur.execute("SELECT user_id FROM users WHERE username=?", (username,))
+    res = cur.fetchone()
+    return res[0] if res else None
+
+def add_admin(username):
+    cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (username,))
     conn.commit()
 
-def del_admin(admin_id):
-    cur.execute("DELETE FROM admins WHERE admin_id=?", (admin_id,))
+def del_admin(username):
+    cur.execute("DELETE FROM admins WHERE username=?", (username,))
     conn.commit()
 
-def is_admin(user_id):
-    cur.execute("SELECT 1 FROM admins WHERE admin_id=?", (user_id,))
+def is_admin(username):
+    cur.execute("SELECT 1 FROM admins WHERE username=?", (username,))
     return cur.fetchone() is not None
 
 def create_giveaway(title, days):
@@ -99,25 +104,30 @@ async def start(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
 
     welcome_text = (
-        f"🎉🎊 Ласкаво просимо, @{msg.from_user.username}! 🎊🎉\n\n"
-        "🌟 Ознайомитися із нашим прайс листом: https://t.me/praiceabn\n"
+        f"🎉🎊 Привіт, @{msg.from_user.username}! 🎊🎉\n\n"
+        "🌟 Ласкаво просимо до нашої спільноти.\n\n"
+        "💰 Ознайомитися із прайс листом: https://t.me/praiceabn\n"
         "📣 Основний канал: https://t.me/reklamaabn\n\n"
         "🎁 Розіграші: /giveaways\n"
-        "💬 Надішліть повідомлення адміну, і він відповість."
+        "💬 Напишіть повідомлення, і адміністратор вам відповість."
     )
     await msg.answer(welcome_text)
 
     # Повідомлення адміну лише один раз
     if not was_notified(msg.from_user.id):
-        try:
-            await bot.send_message(
-                OWNER_ID,
-                f"🆕 Новий користувач зареєстрований!\n"
-                f"👤 Username: @{msg.from_user.username}\n"
-                f"🆔 ID: {msg.from_user.id}\n"
-                f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-            )
-        except: pass
+        for admin in get_users():
+            if is_admin(admin):
+                user_id = get_user_id(admin)
+                if user_id:
+                    try:
+                        await bot.send_message(
+                            user_id,
+                            f"🆕 Новий користувач зареєстрований!\n"
+                            f"👤 Username: @{msg.from_user.username}\n"
+                            f"🆔 ID: {msg.from_user.id}\n"
+                            f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                        )
+                    except: pass
         mark_notified(msg.from_user.id)
 
 @dp.message(Command("giveaways"))
@@ -140,73 +150,81 @@ async def join(msg: types.Message):
     except:
         await msg.answer("❌ Невірна команда. Використання: /join<ID>")
 
-# ---------------- Команди головного адміна ----------------
+# ---------------- Команди адмінів ----------------
 @dp.message(Command("ahelp"))
 async def ahelp(msg: types.Message):
-    if msg.from_user.id != OWNER_ID:
+    if not is_admin(msg.from_user.username):
         return
     text = (
         "⚙️ Команди адміністратора:\n"
         "/ahelp — список команд\n"
-        "/addadmin <ID> — додати адміна\n"
-        "/deladmin <ID> — видалити адміна\n"
-        "/reply <ID> текст — відповісти користувачу\n"
+        "/reply @username текст — відповісти користувачу\n"
         "/creategiveaway Назва | дні — створити розіграш\n"
-        "/giveaways — активні розіграші"
+        "/giveaways — активні розіграші\n"
     )
+    if msg.from_user.username == OWNER_USERNAME:
+        text += (
+            "/addadmin @username — додати адміна\n"
+            "/deladmin @username — видалити адміна"
+        )
     await msg.answer(text)
 
 @dp.message(Command("addadmin"))
 async def addadmin(msg: types.Message):
-    if msg.from_user.id != OWNER_ID:
+    if msg.from_user.username != OWNER_USERNAME:
         return
     try:
-        admin_id = int(msg.text.split()[1])
-        add_admin(admin_id)
-        await msg.answer(f"✅ Admin {admin_id} додано")
+        username = msg.text.split()[1].replace("@","")
+        add_admin(username)
+        await msg.answer(f"✅ @{username} додано як адмін")
     except:
-        await msg.answer("❌ Використання: /addadmin <ID>")
+        await msg.answer("❌ Використання: /addadmin @username")
 
 @dp.message(Command("deladmin"))
 async def deladmin(msg: types.Message):
-    if msg.from_user.id != OWNER_ID:
+    if msg.from_user.username != OWNER_USERNAME:
         return
     try:
-        admin_id = int(msg.text.split()[1])
-        if admin_id == OWNER_ID:
+        username = msg.text.split()[1].replace("@","")
+        if username == OWNER_USERNAME:
             await msg.answer("❌ Неможливо видалити головного адміна")
             return
-        del_admin(admin_id)
-        await msg.answer(f"✅ Admin {admin_id} видалено")
+        del_admin(username)
+        await msg.answer(f"✅ @{username} видалено з адмінів")
     except:
-        await msg.answer("❌ Використання: /deladmin <ID>")
+        await msg.answer("❌ Використання: /deladmin @username")
 
 @dp.message(Command("reply"))
 async def reply(msg: types.Message):
-    if not is_admin(msg.from_user.id):
+    if not is_admin(msg.from_user.username):
         return
     try:
         parts = msg.text.split(" ", 2)
-        user_id = int(parts[1])
+        username = parts[1].replace("@","")
         text = parts[2]
-        await bot.send_message(user_id, f"💬 Відповідь адміна:\n{text}")
-        await msg.answer("✅ Відправлено")
+        user_id = get_user_id(username)
+        if user_id:
+            await bot.send_message(user_id, f"💬 Відповідь адміна:\n{text}")
+            await msg.answer("✅ Відправлено")
+        else:
+            await msg.answer("❌ Користувач не знайдений")
     except:
-        await msg.answer("❌ Використання: /reply <ID> текст")
+        await msg.answer("❌ Використання: /reply @username текст")
 
 @dp.message(Command("creategiveaway"))
 async def creategiveaway(msg: types.Message):
-    if not is_admin(msg.from_user.id):
+    if not is_admin(msg.from_user.username):
         return
     try:
         data = msg.text.replace("/creategiveaway","").strip()
         title, days = data.split("|")
         gid = create_giveaway(title.strip(), int(days.strip()))
-        for user_id in get_users():
-            try:
-                await bot.send_message(user_id, f"🎉 НОВИЙ РОЗІГРАШ!\n{title.strip()}\n⏳ Тривалість: {days.strip()} днів\n👉 /join{gid}")
-            except:
-                pass
+        for username in get_users():
+            user_id = get_user_id(username)
+            if user_id:
+                try:
+                    await bot.send_message(user_id, f"🎉 НОВИЙ РОЗІГРАШ!\n{title.strip()}\n⏳ Тривалість: {days.strip()} днів\n👉 /join{gid}")
+                except: pass
         await msg.answer(f"✅ Розіграш створено (ID {gid})")
     except:
         await msg.answer("❌ Використання: /creategiveaway Назва | дні")
@@ -214,17 +232,16 @@ async def creategiveaway(msg: types.Message):
 # ---------------- Зворотній зв'язок ----------------
 @dp.message()
 async def forward_to_admin(msg: types.Message):
-    if is_admin(msg.from_user.id):
+    if is_admin(msg.from_user.username):
         return
-    # Користувачу повідомлення про успішну відправку
     await msg.answer("✅ Ваше повідомлення успішно надіслано. Очікуйте відповіді адміністратора.")
-    try:
-        await bot.send_message(
-            OWNER_ID,
-            f"📩 Повідомлення від @{msg.from_user.username} (ID {msg.from_user.id}):\n{msg.text}"
-        )
-    except:
-        pass
+    for admin in get_users():
+        if is_admin(admin):
+            user_id = get_user_id(admin)
+            if user_id:
+                try:
+                    await bot.send_message(user_id, f"📩 Повідомлення від @{msg.from_user.username}:\n{msg.text}")
+                except: pass
 
 # ---------------- Запуск ----------------
 async def main():

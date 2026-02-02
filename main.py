@@ -26,14 +26,13 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS admins (
-    username TEXT PRIMARY KEY,
-    user_id INTEGER
+    username TEXT PRIMARY KEY
 )
 """)
 conn.commit()
 
 # Додаємо головного адміна
-cur.execute("INSERT OR IGNORE INTO admins VALUES (?,?)", (OWNER_USERNAME, None))
+cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (OWNER_USERNAME,))
 conn.commit()
 
 # --- ФУНКЦІЇ ---
@@ -50,17 +49,13 @@ def was_notified(username):
     res = cur.fetchone()
     return res[0] == 1 if res else False
 
-def update_admin_userid(username, user_id):
-    cur.execute("UPDATE admins SET user_id=? WHERE username=?", (user_id, username))
-    conn.commit()
-
 def is_admin(username):
     cur.execute("SELECT 1 FROM admins WHERE username=?", (username,))
     return cur.fetchone() is not None
 
 def get_admins():
-    cur.execute("SELECT username, user_id FROM admins")
-    return cur.fetchall()
+    cur.execute("SELECT username FROM admins")
+    return [row[0] for row in cur.fetchall()]
 
 def get_user_id(username):
     cur.execute("SELECT user_id FROM users WHERE username=?", (username,))
@@ -80,10 +75,6 @@ def del_admin(username):
 async def start(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
 
-    # Якщо адміну — зберігаємо user_id
-    if is_admin(msg.from_user.username):
-        update_admin_userid(msg.from_user.username, msg.from_user.id)
-
     welcome_text = (
         f"🎉 Привіт, @{msg.from_user.username}! 🎉\n\n"
         "🌟 Ласкаво просимо до нашої спільноти.\n"
@@ -95,15 +86,19 @@ async def start(msg: types.Message):
 
     # Повідомлення адмінам один раз
     if not was_notified(msg.from_user.username):
-        for admin, admin_id in get_admins():
-            if admin_id:
-                try:
-                    await bot.send_message(admin_id,
-                                           f"🆕 Новий користувач зареєстрований!\n"
-                                           f"👤 Username: @{msg.from_user.username}\n"
-                                           f"🆔 ID: {msg.from_user.id}\n"
-                                           f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-                except: pass
+        for admin_username in get_admins():
+            try:
+                await bot.send_message(
+                    chat_id=f"@{admin_username}",
+                    text=(
+                        f"🆕 Новий користувач зареєстрований!\n"
+                        f"👤 Username: @{msg.from_user.username}\n"
+                        f"🆔 ID: {msg.from_user.id}\n"
+                        f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                    )
+                )
+            except Exception as e:
+                print(f"Помилка відправки адміну {admin_username}: {e}")
         mark_notified(msg.from_user.username)
 
 # --- АДМІН-КОМАНДИ ---
@@ -164,13 +159,14 @@ async def feedback(msg: types.Message):
     if is_admin(msg.from_user.username):
         return
     add_user(msg.from_user.id, msg.from_user.username)
-    # Повідомлення всім адмінам, у яких вже є user_id
-    for admin, admin_id in get_admins():
-        if admin_id:
-            try:
-                await bot.send_message(admin_id,
-                                       f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}")
-            except: pass
+    # Повідомлення всім адмінам по username
+    for admin_username in get_admins():
+        try:
+            await bot.send_message(
+                chat_id=f"@{admin_username}",
+                text=f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}"
+            )
+        except: pass
     await msg.answer("💌 Ваше повідомлення отримано! Адміністратор незабаром відповість.")
 
 # --- ЗАПУСК ---

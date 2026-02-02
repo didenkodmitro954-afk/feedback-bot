@@ -6,9 +6,9 @@ from database import *
 
 TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
-dp = Dispatcher()  # v3 - бот передається тільки при start_polling
+dp = Dispatcher()  # v3: dispatcher без аргументів
 
-# ------------------ Кнопки ------------------
+# ---------------- Кнопки ----------------
 def main_menu(user_id):
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("📩 Написати адміну"))
@@ -29,22 +29,22 @@ def admin_panel():
     kb.add(KeyboardButton("⬅️ Назад"))
     return kb
 
-# ------------------ Стани ------------------
-admin_mode = {}   # що зараз робить адмін
-reply_mode = {}   # для відповіді конкретному користувачу
+# ---------------- Стани ----------------
+admin_mode = {}  # що робить адмін зараз
+reply_mode = {}  # відповіді користувачам
 
-# ------------------ /start ------------------
+# ---------------- /start ----------------
 @dp.message()
 async def start_handler(msg: types.Message):
     if msg.text == "/start":
         add_user(msg.from_user.id, msg.from_user.username or "NoName")
         await msg.answer("👋 Вітаю! Вибери дію:", reply_markup=main_menu(msg.from_user.id))
-        # повідомлення адмінам про нового користувача
+        # повідомлення адмінам
         for admin in get_all_admins():
             await bot.send_message(admin,
                                    f"🆕 Новий користувач:\n👤 @{msg.from_user.username}\n🆔 {msg.from_user.id}")
 
-# ------------------ Обробка кнопок ------------------
+# ---------------- Обробка кнопок ----------------
 @dp.message()
 async def buttons_handler(msg: types.Message):
     text = msg.text
@@ -54,7 +54,7 @@ async def buttons_handler(msg: types.Message):
     system_buttons = ["⚙️ Адмін панель","⬅️ Назад","📨 Повідомлення","➕ Додати адміна",
                       "➖ Видалити адміна","📜 Лог дій","🎁 Розіграші адмін","🎁 Розіграші","📩 Написати адміну"]
 
-    # Кнопки адмін-панелі
+    # Адмін-панель
     if text == "⚙️ Адмін панель" and uid in admins:
         await msg.answer("⚙️ Адмін панель", reply_markup=admin_panel())
         return
@@ -97,9 +97,9 @@ async def buttons_handler(msg: types.Message):
             await msg.answer(f"🎁 {g[1]}", reply_markup=kb)
         return
 
-    # Всі інші повідомлення від користувачів
+    # Всі інші повідомлення
     if text not in system_buttons:
-        # якщо адмін відповідає користувачу
+        # Відповідь адміна користувачу
         if uid in reply_mode:
             target_uid = reply_mode[uid]
             await bot.send_message(target_uid,f"✉️ Від адміністратора:\n{text}")
@@ -108,14 +108,13 @@ async def buttons_handler(msg: types.Message):
             reply_mode.pop(uid)
             return
 
-        # якщо адмін вводить щось у режимі адмін-панелі
+        # Режим admin_mode
         if uid in admin_mode:
             mode = admin_mode[uid]
             if mode == "add_admin":
                 try:
-                    new_admin = int(text)
-                    add_admin(new_admin)
-                    add_log(uid,"Додано адміна",target_user=new_admin)
+                    add_admin(int(text))
+                    add_log(uid,"Додано адміна",target_user=int(text))
                     await msg.answer("✅ Користувач став адміном")
                 except:
                     await msg.answer("❌ Невірний ID")
@@ -123,9 +122,8 @@ async def buttons_handler(msg: types.Message):
                 return
             elif mode == "remove_admin":
                 try:
-                    rem_admin = int(text)
-                    remove_admin(rem_admin)
-                    add_log(uid,"Видалено адміна",target_user=rem_admin)
+                    remove_admin(int(text))
+                    add_log(uid,"Видалено адміна",target_user=int(text))
                     await msg.answer("✅ Адмін видалений")
                 except:
                     await msg.answer("❌ Невірний ID")
@@ -138,13 +136,13 @@ async def buttons_handler(msg: types.Message):
                 admin_mode.pop(uid)
                 return
 
-        # пересилання повідомлень адмінам (адмін-чат)
+        # Повідомлення адмінам
         for admin in admins:
             await bot.send_message(admin,
                                    f"📩 Повідомлення від @{msg.from_user.username or 'NoName'}\n🆔 {uid}\n\n{text}")
         await msg.answer("✅ Повідомлення надіслано адміну")
 
-# ------------------ Callback для розіграшів ------------------
+# ---------------- Callback для розіграшів ----------------
 @dp.callback_query()
 async def giveaway_callback(c: types.CallbackQuery):
     if c.data.startswith("join_"):
@@ -152,7 +150,7 @@ async def giveaway_callback(c: types.CallbackQuery):
         join_giveaway(c.from_user.id, gid)
         await c.answer("Ти взяв участь у розіграші!")
 
-# ------------------ Запуск ------------------
+# ---------------- Запуск ----------------
 async def main():
     print("Bot started")
     await dp.start_polling(bot)

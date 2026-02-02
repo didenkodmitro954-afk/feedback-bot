@@ -1,4 +1,4 @@
-import os
+  import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from database import *
@@ -12,28 +12,27 @@ reply_mode = {}  # якщо адмін відповідає користувач
 # ---------------- /start ----------------
 @dp.message()
 async def start_handler(msg: types.Message):
-    uid = msg.from_user.id
-    username = msg.from_user.username or "NoName"
-    add_user(uid, username)
+    if msg.text == "/start":
+        uid = msg.from_user.id
+        username = msg.from_user.username or "NoName"
+        add_user(uid, username)
 
-    admins = get_all_admins()
-    # повідомлення адмінам про нового користувача
-    for admin in admins:
-        await bot.send_message(admin, f"🆕 Новий користувач зареєструвався:\n👤 @{username}\n🆔 {uid}")
+        # повідомляємо всім адмінам
+        admins = get_all_admins()
+        for admin in admins:
+            await bot.send_message(admin, f"🆕 Новий користувач зареєструвався:\n👤 @{username}\n🆔 {uid}")
 
-    # повідомлення користувачу
-    await msg.answer(
-        f"👋 Привіт, {username}!\n"
-        "Ти можеш надіслати мені повідомлення, і наші адміни його отримають.\n"
-        "Напиши щось нижче ⬇️"
-    )
+        await msg.answer(
+            f"👋 Привіт, {username}!\n"
+            "Ти можеш надіслати повідомлення адміну нижче ⬇️"
+        )
 
 # ---------------- Повідомлення ----------------
 @dp.message()
 async def message_handler(msg: types.Message):
     uid = msg.from_user.id
-    admins = get_all_admins()
     text = msg.text
+    admins = get_all_admins()
 
     # якщо адмін зараз відповідає користувачу
     if uid in reply_mode:
@@ -43,15 +42,17 @@ async def message_handler(msg: types.Message):
         reply_mode.pop(uid)
         return
 
-    # адмін-команди
+    # Адмін-команди
     if uid in admins:
         if text == "/ahelp":
             await msg.answer(
                 "⚙️ Список команд адміна:\n"
-                "/ahelp — показати список команд\n"
-                "/reply <id> — відповісти користувачу\n"
+                "/ahelp — показати список команд адміна\n"
                 "/addadmin <id> — додати адміна\n"
-                "/removeadmin <id> — видалити адміна"
+                "/removeadmin <id> — видалити адміна\n"
+                "/reply <id> — відповісти користувачу\n"
+                "/create <назва> — створити розіграш\n"
+                "/giveaways — список розіграшів\n"
             )
             return
 
@@ -82,7 +83,27 @@ async def message_handler(msg: types.Message):
                 await msg.answer("❌ Використовуй /reply <id> правильно")
             return
 
-    # якщо звичайне повідомлення користувача → пересилаємо всім адмінам
+        if text.startswith("/create"):
+            title = text.replace("/create","").strip()
+            if not title:
+                await msg.answer("❌ Вкажи назву розіграшу")
+                return
+            create_giveaway(title)
+            await msg.answer(f"🎁 Розіграш створено: {title}")
+            return
+
+        if text == "/giveaways":
+            gvs = get_giveaways()
+            if not gvs:
+                await msg.answer("Немає розіграшів")
+                return
+            response = "🎁 Розіграші:\n"
+            for g in gvs:
+                response += f"{g[0]}: {g[1]}\n"
+            await msg.answer(response)
+            return
+
+    # Звичайне повідомлення користувача → пересилаємо всім адмінам
     if uid not in admins:
         for admin in admins:
             await bot.send_message(
@@ -97,4 +118,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())              

@@ -241,8 +241,9 @@ async def leave_ticket(msg: Message):
         await msg.answer("❌ Використання: /leave @username")
 
 # ---------------- Пересилка повідомлень в активних тікетах ----------------
-@dp.message()
+@dp.message(lambda m: not m.text.startswith("/"))
 async def forward_ticket_messages(msg: Message):
+    # Перевірка чи користувач у тікеті
     if ticket_exists(msg.from_user.username):
         admin = get_ticket_admin(msg.from_user.username)
         if admin:
@@ -262,7 +263,7 @@ async def forward_ticket_messages(msg: Message):
                 await bot.send_message(res[0], f"📩 Повідомлення від @{msg.from_user.username}:\n{msg.text}")
             except: pass
 
-# ---------------- Команди адмінів (розіграші та управління) ----------------
+# ---------------- Команди адмінів ----------------
 @dp.message(Command("ahelp"))
 async def ahelp(msg: Message):
     if not is_admin(msg.from_user.username):
@@ -280,11 +281,11 @@ async def ahelp(msg: Message):
     )
     await msg.answer(text)
 
-# Додаємо інші адмінські команди аналогічно як було раніше...
+# Додаємо інші адмінські команди (addadmin, deladmin, reply, creategiveaway) так само як раніше...
 
 # ---------------- Запуск ----------------
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())       

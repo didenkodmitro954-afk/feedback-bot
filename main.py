@@ -20,27 +20,13 @@ cur = conn.cursor()
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    username TEXT,
+    username TEXT UNIQUE,
     notified INTEGER DEFAULT 0
 )
 """)
 cur.execute("""
 CREATE TABLE IF NOT EXISTS admins (
     username TEXT PRIMARY KEY
-)
-""")
-cur.execute("""
-CREATE TABLE IF NOT EXISTS giveaways (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    days INTEGER,
-    active INTEGER
-)
-""")
-cur.execute("""
-CREATE TABLE IF NOT EXISTS giveaway_users (
-    giveaway_id INTEGER,
-    user_id INTEGER
 )
 """)
 cur.execute("""
@@ -105,7 +91,7 @@ def close_ticket(username):
     cur.execute("DELETE FROM tickets WHERE username=?", (username,))
     conn.commit()
 
-# ---------------- Команди ----------------
+# ---------------- КОМАНДА START ----------------
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
@@ -114,15 +100,12 @@ async def start(msg: types.Message):
         "🌟 Ласкаво просимо до нашої спільноти.\n"
         "💰 Ознайомитися з прайс листом: https://t.me/praiceabn\n"
         "📣 Основний канал: https://t.me/reklamaabn\n\n"
-        "🎁 Для участі в розіграшах використовуйте:\n"
-        "/giveaways — переглянути активні\n"
-        "/join<ID> — приєднатися до розіграшу\n\n"
         "💬 Для звернення до адміністратора створіть тікет:\n"
         "/ticket Ваше повідомлення"
     )
     await msg.answer(welcome_text)
 
-    # Повідомлення адмінам про нових користувачів (тільки один раз)
+    # Повідомлення адмінам про нового користувача
     new_users = get_new_users()
     for user_id, username in new_users:
         for admin in get_admins():
@@ -134,12 +117,11 @@ async def start(msg: types.Message):
                     try:
                         await bot.send_message(admin_id,
                                                f"🆕 Новий користувач зареєстрований!\n"
-                                               f"👤 @{username}\n"
-                                               f"🆔 {user_id}")
+                                               f"👤 @{username}")
                     except: pass
         mark_notified(user_id)
 
-# ---------------- Тікети ----------------
+# ---------------- ТІКЕТ ----------------
 @dp.message(lambda m: m.text.startswith("/ticket"))
 async def ticket(msg: types.Message):
     text = msg.text.replace("/ticket", "").strip()
@@ -152,6 +134,7 @@ async def ticket(msg: types.Message):
     create_ticket(msg.from_user.username)
     await msg.answer("✅ Ваш тікет відкрито! Ви можете писати сюди без команд, поки тікет не буде закрито.")
 
+    # Повідомлення всім адмінам
     for admin in get_admins():
         cur.execute("SELECT user_id FROM users WHERE username=?", (admin,))
         res = cur.fetchone()
@@ -162,11 +145,12 @@ async def ticket(msg: types.Message):
                                        f"📩 Нова заявка від @{msg.from_user.username}:\n{text}")
             except: pass
 
-# Вільна переписка у тікеті
-@dp.message(lambda m: True)
+# ---------------- ВІЛЬНИЙ ЧАТ ----------------
+@dp.message()
 async def free_ticket_chat(msg: types.Message):
     username = msg.from_user.username
-    # Якщо користувач веде тікет
+
+    # Користувач пише у тікет
     if ticket_exists(username):
         admin = get_ticket_admin(username)
         if admin:
@@ -175,7 +159,7 @@ async def free_ticket_chat(msg: types.Message):
             if res:
                 await bot.send_message(res[0], f"💬 @{username}: {msg.text}")
         else:
-            # Надсилаємо всім адмінам
+            # Якщо ще ніхто не взяв, надсилаємо всім адмінам
             for admin in get_admins():
                 cur.execute("SELECT user_id FROM users WHERE username=?", (admin,))
                 res = cur.fetchone()
@@ -183,7 +167,7 @@ async def free_ticket_chat(msg: types.Message):
                     await bot.send_message(res[0], f"💬 @{username}: {msg.text}")
         return
 
-    # Якщо адміністратор веде тікет
+    # Адмін пише у тікет
     if is_admin(username):
         cur.execute("SELECT username FROM tickets WHERE admin=?", (username,))
         tickets = cur.fetchall()
@@ -194,7 +178,7 @@ async def free_ticket_chat(msg: types.Message):
             if res:
                 await bot.send_message(res[0], f"💬 Адміністратор: {msg.text}")
 
-# ---------------- Адмінка ----------------
+# ---------------- АДМІН КОМАНДИ ----------------
 @dp.message(Command("ahelp"))
 async def ahelp(msg: types.Message):
     if not is_admin(msg.from_user.username):
@@ -204,6 +188,7 @@ async def ahelp(msg: types.Message):
         "/ahelp — список команд\n"
         "/addadmin @username — додати адміна\n"
         "/deladmin @username — видалити адміна\n"
+        "/take @username — взяти тікет\n"
         "/close_ticket @username — закрити тікет\n"
     )
 
@@ -247,7 +232,7 @@ async def close_ticket_cmd(msg: types.Message):
     except:
         await msg.answer("❌ Використання: /close_ticket @username")
 
-# ---------------- Запуск ----------------
+# ---------------- ЗАПУСК ----------------
 async def main():
     await dp.start_polling(bot)
 

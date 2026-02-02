@@ -103,10 +103,9 @@ async def admin_panel_handler(msg: types.Message):
         mode = admin_mode[uid]
         if mode == "add_admin":
             try:
-                new_admin = int(text)
+                new_admin = int(msg.text)
                 add_admin(new_admin)
                 add_log(uid,"Додано адміна",target_user=new_admin)
-
 await msg.answer("✅ Користувач став адміном")
             except:
                 await msg.answer("❌ Невірний ID")

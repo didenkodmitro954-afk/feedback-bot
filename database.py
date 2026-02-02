@@ -51,6 +51,7 @@ def get_all_admins():
     cursor.execute("SELECT id FROM admins")
     return [x[0] for x in cursor.fetchall()]
 
+# ---------------- Розіграші ----------------
 def create_giveaway(title):
     cursor.execute("INSERT INTO giveaways (title) VALUES (?)", (title,))
     conn.commit()
@@ -60,5 +61,4 @@ def get_giveaways():
     return cursor.fetchall()
 
 def join_giveaway(user_id, giveaway_id):
-    cursor.execute("INSERT INTO giveaway_users (user_id, giveaway_id) VALUES (?, ?)", (user_id, giveaway_id))
-    conn.commit()
+    cursor.execute("INSERT OR IGNORE INTO giveaway_users (user_id, giveaway_id) VALUES

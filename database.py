@@ -19,17 +19,6 @@ CREATE TABLE IF NOT EXISTS admins (
 """)
 
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS admin_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    admin_id INTEGER,
-    action TEXT,
-    target_user INTEGER,
-    info TEXT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-)
-""")
-
-cursor.execute("""
 CREATE TABLE IF NOT EXISTS giveaways (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT
@@ -45,7 +34,8 @@ CREATE TABLE IF NOT EXISTS giveaway_users (
 
 conn.commit()
 
-# Функції
+# ---------------- Функції ----------------
+
 def add_user(user_id, username):
     cursor.execute("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", (user_id, username))
     conn.commit()
@@ -78,15 +68,6 @@ def remove_admin(admin_id):
 def get_all_admins():
     cursor.execute("SELECT id FROM admins")
     return [x[0] for x in cursor.fetchall()]
-
-def add_log(admin_id, action, target_user=None, info=""):
-    cursor.execute("INSERT INTO admin_logs (admin_id, action, target_user, info) VALUES (?, ?, ?, ?)",
-                   (admin_id, action, target_user, info))
-    conn.commit()
-
-def get_logs():
-    cursor.execute("SELECT * FROM admin_logs ORDER BY timestamp DESC LIMIT 50")
-    return cursor.fetchall()
 
 def create_giveaway(title):
     cursor.execute("INSERT INTO giveaways (title) VALUES (?)", (title,))

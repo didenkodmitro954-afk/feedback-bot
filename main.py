@@ -1,23 +1,23 @@
-import logging
 import asyncio
+import logging
+import sqlite3
+import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-import sqlite3
-from datetime import datetime
 
-# ---------------- Налаштування ----------------
+# ================== НАЛАШТУВАННЯ ==================
 TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"
-OWNER_USERNAME = "userveesna"  # головний адмін
+OWNER_USERNAME = "userveesna"  # ти — головний адмін
 
 logging.basicConfig(level=logging.INFO)
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# ---------------- База ----------------
+# ================== БАЗА ДАНИХ ==================
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cur = conn.cursor()
 
-# Таблиці
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -25,225 +25,202 @@ CREATE TABLE IF NOT EXISTS users (
     notified INTEGER DEFAULT 0
 )
 """)
+
 cur.execute("""
 CREATE TABLE IF NOT EXISTS admins (
     username TEXT PRIMARY KEY
 )
 """)
+
 cur.execute("""
-CREATE TABLE IF NOT EXISTS giveaways (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    days INTEGER,
-    active INTEGER
+CREATE TABLE IF NOT EXISTS tickets (
+    user_id INTEGER PRIMARY KEY,
+    admin_username TEXT,
+    last_time INTEGER
 )
 """)
-cur.execute("""
-CREATE TABLE IF NOT EXISTS giveaway_users (
-    giveaway_id INTEGER,
-    user_id INTEGER
-)
-""")
+
 conn.commit()
 
-# Додаємо головного адміна
 cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (OWNER_USERNAME,))
 conn.commit()
 
-# ---------------- Функції ----------------
-def add_user(user_id, username):
-    cur.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?,?)", (user_id, username))
-    conn.commit()
-
-def mark_notified(user_id):
-    cur.execute("UPDATE users SET notified=1 WHERE user_id=?", (user_id,))
-    conn.commit()
-
-def was_notified(user_id):
-    cur.execute("SELECT notified FROM users WHERE user_id=?", (user_id,))
-    res = cur.fetchone()
-    return res[0] == 1 if res else False
-
-def get_users():
-    cur.execute("SELECT username FROM users")
-    return [x[0] for x in cur.fetchall()]
-
-def get_user_id(username):
-    cur.execute("SELECT user_id FROM users WHERE username=?", (username,))
-    res = cur.fetchone()
-    return res[0] if res else None
-
-def add_admin(username):
-    cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (username,))
-    conn.commit()
-
-def del_admin(username):
-    cur.execute("DELETE FROM admins WHERE username=?", (username,))
-    conn.commit()
-
+# ================== ФУНКЦІЇ ==================
 def is_admin(username):
     cur.execute("SELECT 1 FROM admins WHERE username=?", (username,))
     return cur.fetchone() is not None
 
-def create_giveaway(title, days):
-    cur.execute("INSERT INTO giveaways (title, days, active) VALUES (?,?,1)", (title, days))
-    conn.commit()
-    return cur.lastrowid
-
-def get_active_giveaways():
-    cur.execute("SELECT id, title FROM giveaways WHERE active=1")
-    return cur.fetchall()
-
-def join_giveaway(gid, user_id):
-    cur.execute("INSERT OR IGNORE INTO giveaway_users VALUES (?,?)", (gid, user_id))
+def add_user(user_id, username):
+    cur.execute(
+        "INSERT OR IGNORE INTO users (user_id, username) VALUES (?,?)",
+        (user_id, username)
+    )
     conn.commit()
 
-# ---------------- Команди користувачів ----------------
+def get_admins():
+    cur.execute("SELECT username FROM admins")
+    return [x[0] for x in cur.fetchall()]
+
+def get_user_id(username):
+    cur.execute("SELECT user_id FROM users WHERE username=?", (username,))
+    r = cur.fetchone()
+    return r[0] if r else None
+
+def take_ticket(user_id, admin):
+    cur.execute(
+        "INSERT OR REPLACE INTO tickets VALUES (?,?,?)",
+        (user_id, admin, int(time.time()))
+    )
+    conn.commit()
+
+def get_ticket(user_id):
+    cur.execute(
+        "SELECT admin_username, last_time FROM tickets WHERE user_id=?",
+        (user_id,)
+    )
+    return cur.fetchone()
+
+def close_ticket(user_id):
+    cur.execute("DELETE FROM tickets WHERE user_id=?", (user_id,))
+    conn.commit()
+
+# ================== /start ==================
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
 
-    welcome_text = (
-        f"🎉🎊 Привіт, @{msg.from_user.username}! 🎊🎉\n\n"
-        "🌟 Ласкаво просимо до нашої спільноти.\n\n"
-        "💰 Ознайомитися із прайс листом: https://t.me/praiceabn\n"
-        "📣 Основний канал: https://t.me/reklamaabn\n\n"
-        "🎁 Розіграші: /giveaways\n"
-        "💬 Напишіть повідомлення, і адміністратор вам відповість."
+    await msg.answer(
+        "👋 Вітаємо!\n\n"
+        "✅ Ви успішно зареєстровані\n\n"
+        "📨 Напишіть своє повідомлення — адміністрація відповість вам\n\n"
+        "📌 Прайс-лист: https://t.me/praiceabn\n"
+        "📣 Основний канал: https://t.me/reklamaabn"
     )
-    await msg.answer(welcome_text)
 
-    # Повідомлення адміну лише один раз
-    if not was_notified(msg.from_user.id):
-        for admin in get_users():
-            if is_admin(admin):
-                user_id = get_user_id(admin)
-                if user_id:
-                    try:
-                        await bot.send_message(
-                            user_id,
-                            f"🆕 Новий користувач зареєстрований!\n"
-                            f"👤 Username: @{msg.from_user.username}\n"
-                            f"🆔 ID: {msg.from_user.id}\n"
-                            f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-                        )
-                    except: pass
-        mark_notified(msg.from_user.id)
+    cur.execute("SELECT notified FROM users WHERE user_id=?", (msg.from_user.id,))
+    if cur.fetchone()[0] == 0:
+        for admin in get_admins():
+            uid = get_user_id(admin)
+            if uid:
+                await bot.send_message(
+                    uid,
+                    f"🆕 Новий користувач:\n"
+                    f"👤 @{msg.from_user.username}\n"
+                    f"🆔 {msg.from_user.id}"
+                )
+        cur.execute(
+            "UPDATE users SET notified=1 WHERE user_id=?",
+            (msg.from_user.id,)
+        )
+        conn.commit()
 
-@dp.message(Command("giveaways"))
-async def giveaways(msg: types.Message):
-    gvs = get_active_giveaways()
-    if not gvs:
-        await msg.answer("❌ Немає активних розіграшів.")
-        return
-    text = "🎁 Активні розіграші:\n"
-    for g in gvs:
-        text += f"\nID {g[0]} — {g[1]} /join{g[0]}"
-    await msg.answer(text)
-
-@dp.message(lambda m: m.text.startswith("/join"))
-async def join(msg: types.Message):
-    try:
-        gid = int(msg.text.replace("/join",""))
-        join_giveaway(gid, msg.from_user.id)
-        await msg.answer("✅ Ви приєдналися до розіграшу!")
-    except:
-        await msg.answer("❌ Невірна команда. Використання: /join<ID>")
-
-# ---------------- Команди адмінів ----------------
+# ================== /ahelp ==================
 @dp.message(Command("ahelp"))
 async def ahelp(msg: types.Message):
     if not is_admin(msg.from_user.username):
         return
-    text = (
-        "⚙️ Команди адміністратора:\n"
-        "/ahelp — список команд\n"
-        "/reply @username текст — відповісти користувачу\n"
-        "/creategiveaway Назва | дні — створити розіграш\n"
-        "/giveaways — активні розіграші\n"
+
+    await msg.answer(
+        "⚙️ Адмін-команди:\n\n"
+        "/ahelp — допомога\n"
+        "/reply @user текст — відповісти та взяти тікет\n"
+        "/closeticket @user — закрити тікет"
     )
-    if msg.from_user.username == OWNER_USERNAME:
-        text += (
-            "/addadmin @username — додати адміна\n"
-            "/deladmin @username — видалити адміна"
-        )
-    await msg.answer(text)
 
-@dp.message(Command("addadmin"))
-async def addadmin(msg: types.Message):
-    if msg.from_user.username != OWNER_USERNAME:
-        return
-    try:
-        username = msg.text.split()[1].replace("@","")
-        add_admin(username)
-        await msg.answer(f"✅ @{username} додано як адмін")
-    except:
-        await msg.answer("❌ Використання: /addadmin @username")
-
-@dp.message(Command("deladmin"))
-async def deladmin(msg: types.Message):
-    if msg.from_user.username != OWNER_USERNAME:
-        return
-    try:
-        username = msg.text.split()[1].replace("@","")
-        if username == OWNER_USERNAME:
-            await msg.answer("❌ Неможливо видалити головного адміна")
-            return
-        del_admin(username)
-        await msg.answer(f"✅ @{username} видалено з адмінів")
-    except:
-        await msg.answer("❌ Використання: /deladmin @username")
-
+# ================== /reply ==================
 @dp.message(Command("reply"))
 async def reply(msg: types.Message):
     if not is_admin(msg.from_user.username):
         return
-    try:
-        parts = msg.text.split(" ", 2)
-        username = parts[1].replace("@","")
-        text = parts[2]
-        user_id = get_user_id(username)
-        if user_id:
-            await bot.send_message(user_id, f"💬 Відповідь адміна:\n{text}")
-            await msg.answer("✅ Відправлено")
-        else:
-            await msg.answer("❌ Користувач не знайдений")
-    except:
-        await msg.answer("❌ Використання: /reply @username текст")
 
-@dp.message(Command("creategiveaway"))
-async def creategiveaway(msg: types.Message):
+    try:
+        _, username, text = msg.text.split(" ", 2)
+        username = username.replace("@", "")
+        user_id = get_user_id(username)
+
+        if not user_id:
+            await msg.answer("❌ Користувача не знайдено")
+            return
+
+        ticket = get_ticket(user_id)
+        if ticket and ticket[0] != msg.from_user.username:
+            await msg.answer("❌ Тікет вже взяв інший адмін")
+            return
+
+        take_ticket(user_id, msg.from_user.username)
+
+        await bot.send_message(
+            user_id,
+            f"👮 Адміністратор відповів:\n\n{text}"
+        )
+
+        for admin in get_admins():
+            uid = get_user_id(admin)
+            if uid:
+                await bot.send_message(
+                    uid,
+                    f"📌 Адмін @{msg.from_user.username} взяв тікет @{username}"
+                )
+
+        await msg.answer("✅ Відповідь надіслано")
+
+    except:
+        await msg.answer("❌ Формат: /reply @username текст")
+
+# ================== /closeticket ==================
+@dp.message(Command("closeticket"))
+async def close_ticket_cmd(msg: types.Message):
     if not is_admin(msg.from_user.username):
         return
-    try:
-        data = msg.text.replace("/creategiveaway","").strip()
-        title, days = data.split("|")
-        gid = create_giveaway(title.strip(), int(days.strip()))
-        for username in get_users():
-            user_id = get_user_id(username)
-            if user_id:
-                try:
-                    await bot.send_message(user_id, f"🎉 НОВИЙ РОЗІГРАШ!\n{title.strip()}\n⏳ Тривалість: {days.strip()} днів\n👉 /join{gid}")
-                except: pass
-        await msg.answer(f"✅ Розіграш створено (ID {gid})")
-    except:
-        await msg.answer("❌ Використання: /creategiveaway Назва | дні")
 
-# ---------------- Зворотній зв'язок ----------------
+    try:
+        _, username = msg.text.split()
+        username = username.replace("@", "")
+        user_id = get_user_id(username)
+
+        if not user_id:
+            await msg.answer("❌ Користувача не знайдено")
+            return
+
+        close_ticket(user_id)
+
+        await bot.send_message(
+            user_id,
+            "✅ Ваше звернення закрито.\n"
+            "Можете написати знову, якщо потрібно."
+        )
+        await msg.answer("✅ Тікет закрито")
+
+    except:
+        await msg.answer("❌ Формат: /closeticket @username")
+
+# ================== ПОВІДОМЛЕННЯ КОРИСТУВАЧА ==================
 @dp.message()
-async def forward_to_admin(msg: types.Message):
+async def user_message(msg: types.Message):
     if is_admin(msg.from_user.username):
         return
-    await msg.answer("✅ Ваше повідомлення успішно надіслано. Очікуйте відповіді адміністратора.")
-    for admin in get_users():
-        if is_admin(admin):
-            user_id = get_user_id(admin)
-            if user_id:
-                try:
-                    await bot.send_message(user_id, f"📩 Повідомлення від @{msg.from_user.username}:\n{msg.text}")
-                except: pass
 
-# ---------------- Запуск ----------------
+    await msg.answer("✅ Повідомлення надіслано адміністрації")
+
+    ticket = get_ticket(msg.from_user.id)
+    if ticket:
+        admin, last = ticket
+        if time.time() - last > 1800:
+            close_ticket(msg.from_user.id)
+            ticket = None
+
+    for admin in get_admins():
+        if ticket and admin != ticket[0]:
+            continue
+
+        uid = get_user_id(admin)
+        if uid:
+            await bot.send_message(
+                uid,
+                f"📩 @{msg.from_user.username}:\n{msg.text}"
+            )
+
+# ================== ЗАПУСК ==================
 async def main():
     await dp.start_polling(bot)
 

@@ -3,7 +3,7 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"
 OWNER_USERNAME = "userveesna"
@@ -16,7 +16,7 @@ dp = Dispatcher()
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cur = conn.cursor()
 
-# таблиці користувачів та адмінів
+# таблиці
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER,
@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS users (
 cur.execute("""
 CREATE TABLE IF NOT EXISTS admins (
     username TEXT PRIMARY KEY
+)
+""")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS raffles (
+    raffle_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT,
+    description TEXT,
+    end_date TEXT
+)
+""")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS raffle_entries (
+    raffle_id INTEGER,
+    username TEXT
 )
 """)
 conn.commit()
@@ -70,6 +84,23 @@ def del_admin(username):
     cur.execute("DELETE FROM admins WHERE username=?", (username,))
     conn.commit()
 
+def create_raffle(name, description, days):
+    end_date = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M")
+    cur.execute("INSERT INTO raffles (name, description, end_date) VALUES (?,?,?)",
+                (name, description, end_date))
+    raffle_id = cur.lastrowid
+    conn.commit()
+    return raffle_id, end_date
+
+def join_raffle(raffle_id, username):
+    cur.execute("INSERT OR IGNORE INTO raffle_entries (raffle_id, username) VALUES (?,?)",
+                (raffle_id, username))
+    conn.commit()
+
+def get_raffle_entries(raffle_id):
+    cur.execute("SELECT username FROM raffle_entries WHERE raffle_id=?", (raffle_id,))
+    return [row[0] for row in cur.fetchall()]
+
 # --- START ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
@@ -97,8 +128,7 @@ async def start(msg: types.Message):
                         f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
                     )
                 )
-            except Exception as e:
-                print(f"Помилка відправки адміну {admin_username}: {e}")
+            except: pass
         mark_notified(msg.from_user.username)
 
 # --- АДМІН-КОМАНДИ ---
@@ -111,7 +141,9 @@ async def ahelp(msg: types.Message):
         "/ahelp — список команд\n"
         "/addadmin @username — додати адміна\n"
         "/deladmin @username — видалити адміна\n"
-        "/reply @username Текст — відповісти користувачу"
+        "/reply @username Текст — відповісти користувачу\n"
+        "/crafteraffle Назва | опис | дні — створити розіграш\n"
+        "/endraffle id — завершити розіграш та оголосити переможця"
     )
 
 @dp.message(Command("addadmin"))
@@ -153,19 +185,68 @@ async def reply(msg: types.Message):
     except:
         await msg.answer("❌ Використання: /reply @username Текст")
 
-# --- ЗВОРОТНИЙ ЗВ'ЯЗОК ВІД КОРИСТУВАЧА ---
+# --- РОЗІГРАШІ ---
+@dp.message(Command("crafteraffle"))
+async def crafteraffle(msg: types.Message):
+    if not is_admin(msg.from_user.username):
+        return
+    try:
+        parts = msg.text[len("/crafteraffle "):].split("|")
+        name = parts[0].strip()
+        description = parts[1].strip()
+        days = int(parts[2].strip())
+        raffle_id, end_date = create_raffle(name, description, days)
+        # Повідомлення всім користувачам
+        cur.execute("SELECT username FROM users")
+        users = [row[0] for row in cur.fetchall()]
+        for u in users:
+            try:
+                await bot.send_message(f"@{u}",
+                                       f"🎁 Новий розіграш!\n\n"
+                                       f"🏷 Назва: {name}\n"
+                                       f"📜 Опис: {description}\n"
+                                       f"⏰ Закінчення: {end_date}\n"
+                                       f"📝 Приєднатися: /joinraffle {raffle_id}")
+            except: pass
+        await msg.answer(f"✅ Розіграш створено (ID {raffle_id})")
+    except:
+        await msg.answer("❌ Використання: /crafteraffle Назва | опис | дні")
+
+@dp.message(Command("joinraffle"))
+async def joinraffle(msg: types.Message):
+    try:
+        raffle_id = int(msg.text.split()[1])
+        join_raffle(raffle_id, msg.from_user.username)
+        await msg.answer(f"✅ Ви приєдналися до розіграшу ID {raffle_id}")
+    except:
+        await msg.answer("❌ Використання: /joinraffle id")
+
+@dp.message(Command("endraffle"))
+async def endraffle(msg: types.Message):
+    if not is_admin(msg.from_user.username):
+        return
+    try:
+        raffle_id = int(msg.text.split()[1])
+        entries = get_raffle_entries(raffle_id)
+        if not entries:
+            await msg.answer("❌ Немає учасників")
+            return
+        import random
+        winner = random.choice(entries)
+        await msg.answer(f"🎉 Розіграш ID {raffle_id} завершено!\nПереможець: @{winner}")
+    except:
+        await msg.answer("❌ Використання: /endraffle id")
+
+# --- ЗВОРОТНИЙ ЗВ'ЯЗОК ---
 @dp.message()
 async def feedback(msg: types.Message):
     if is_admin(msg.from_user.username):
         return
     add_user(msg.from_user.id, msg.from_user.username)
-    # Повідомлення всім адмінам по username
     for admin_username in get_admins():
         try:
-            await bot.send_message(
-                chat_id=f"@{admin_username}",
-                text=f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}"
-            )
+            await bot.send_message(f"@{admin_username}",
+                                   f"📩 Повідомлення від @{msg.from_user.username}:\n\n{msg.text}")
         except: pass
     await msg.answer("💌 Ваше повідомлення отримано! Адміністратор незабаром відповість.")
 

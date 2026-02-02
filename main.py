@@ -3,8 +3,7 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 import sqlite3
-from datetime import datetime, timedelta
-import random
+from datetime import datetime
 
 TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"
 OWNER_USERNAME = "userveesna"
@@ -17,6 +16,7 @@ dp = Dispatcher()
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cur = conn.cursor()
 
+# таблиці користувачів та адмінів
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER,
@@ -50,16 +50,8 @@ def was_notified(username):
     res = cur.fetchone()
     return res[0] == 1 if res else False
 
-def add_admin(username):
-    cur.execute("INSERT OR IGNORE INTO admins (username) VALUES (?)", (username,))
-    conn.commit()
-
 def update_admin_userid(username, user_id):
     cur.execute("UPDATE admins SET user_id=? WHERE username=?", (user_id, username))
-    conn.commit()
-
-def del_admin(username):
-    cur.execute("DELETE FROM admins WHERE username=?", (username,))
     conn.commit()
 
 def is_admin(username):
@@ -89,7 +81,7 @@ async def start(msg: types.Message):
         "🌟 Ласкаво просимо до нашої спільноти.\n"
         "💰 Ознайомитися з прайс листом: https://t.me/praiceabn\n"
         "📣 Основний канал: https://t.me/reklamaabn\n\n"
-        "💬 Надішліть повідомлення сюди, і наші адміністратори обов'язково зв’яжуться з вами!"
+        "💬 Надішліть повідомлення сюди, і наші адміністратори обов’язково зв’яжуться з вами!"
     )
     await msg.answer(welcome_text)
 
@@ -106,41 +98,7 @@ async def start(msg: types.Message):
                 except: pass
         mark_notified(msg.from_user.username)
 
-# --- АДМІН ---
-@dp.message(Command("ahelp"))
-async def ahelp(msg: types.Message):
-    if not is_admin(msg.from_user.username):
-        return
-    await msg.answer(
-        "⚙️ Команди адміністратора:\n"
-        "/ahelp — список команд\n"
-        "/addadmin @username — додати адміна\n"
-        "/deladmin @username — видалити адміна\n"
-        "/reply @username Текст — відповісти користувачу напряму"
-    )
-
-@dp.message(Command("addadmin"))
-async def add_admin_cmd(msg: types.Message):
-    if msg.from_user.username != OWNER_USERNAME:
-        return
-    try:
-        username = msg.text.split()[1].replace("@", "")
-        add_admin(username)
-        await msg.answer(f"✅ @{username} доданий як адмін")
-    except:
-        await msg.answer("❌ Використання: /addadmin @username")
-
-@dp.message(Command("deladmin"))
-async def del_admin_cmd(msg: types.Message):
-    if msg.from_user.username != OWNER_USERNAME:
-        return
-    try:
-        username = msg.text.split()[1].replace("@", "")
-        del_admin(username)
-        await msg.answer(f"✅ @{username} видалений з адмінів")
-    except:
-        await msg.answer("❌ Використання: /deladmin @username")
-
+# --- ВІДПОВІДЬ АДМІНА ---
 @dp.message(Command("reply"))
 async def reply(msg: types.Message):
     if not is_admin(msg.from_user.username):
@@ -158,7 +116,7 @@ async def reply(msg: types.Message):
     except:
         await msg.answer("❌ Використання: /reply @username Текст")
 
-# --- ЗВОРОТНИЙ ЗВ'ЯЗОК ---
+# --- ЗВОРОТНИЙ ЗВ'ЯЗОК ВІД КОРИСТУВАЧА ---
 @dp.message()
 async def feedback(msg: types.Message):
     if is_admin(msg.from_user.username):

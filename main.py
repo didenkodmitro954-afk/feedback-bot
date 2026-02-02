@@ -1,153 +1,164 @@
-import os
 import asyncio
+import time
+import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from database import *
 
-MAIN_ADMIN_ID = 1540349061
-TOKEN = os.getenv("BOT_TOKEN")
+# ----------------- Налаштування -----------------
+TOKEN = "ТУТ_ВСТАВ_СВІЙ_ТОКЕН"  # <-- твій токен
+MAIN_ADMIN_USERNAME = "userveesna"  # твій username без @
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-reply_mode = {}  # адмін відповідає користувачу
+# ----------------- Ініціалізація головного адміна -----------------
+add_admin(MAIN_ADMIN_USERNAME)
 
-# Додати головного адміна
-add_admin(MAIN_ADMIN_ID)
-
-# ---------------- /start ----------------
+# ----------------- /start -----------------
 @dp.message(Command("start"))
 async def cmd_start(msg: types.Message):
-    uid = msg.from_user.id
-    username = msg.from_user.username or "NoName"
+    username = msg.from_user.username or f"user{msg.from_user.id}"
+    add_user(username)
 
-    # Перевіряємо, чи користувач новий
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE id=?", (uid,))
-    existing = cursor.fetchone()
+    # повідомлення всім адмінам про нового користувача
+    for admin in get_all_admins():
+        if admin != username:  # щоб самому собі не надсилало
+            await bot.send_message(admin, f"🆕 Новий користувач зареєструвався: @{username}")
 
-    add_user(uid, username)
-
-    # Якщо новий — повідомляємо адмінам
-    if not existing:
-        admins = get_all_admins()
-        for admin in admins:
-            await bot.send_message(
-                admin,
-                f"🆕 Новий користувач зареєструвався!\n👤 @{username}\n🆔 {uid}"
-            )
-
-    # Повідомлення користувачу
     await msg.answer(
         f"👋 Привіт, {username}!\n"
-        "Ти можеш надіслати повідомлення, і наші адміни його отримають.\n"
-        "Також можна приєднатись до розіграшів через /join <id>."
+        "Ти можеш приєднатися до розіграшів через /join <id>\n"
+        "Переглянути розіграші: /giveaways"
     )
 
-# ---------------- /join ----------------
-@dp.message(Command("join"))
-async def cmd_join(msg: types.Message):
-    uid = msg.from_user.id
-    try:
-        gid = int(msg.text.split()[1])
-        join_giveaway(uid, gid)
-        await msg.answer(f"🎉 Ти приєднався до розіграшу {gid}")
-    except:
-        await msg.answer("❌ Використовуй: /join <id>")
-
-# ---------------- /giveaways ----------------
+# ----------------- /giveaways -----------------
 @dp.message(Command("giveaways"))
 async def cmd_giveaways(msg: types.Message):
     gvs = get_giveaways()
     if not gvs:
-        await msg.answer("Немає розіграшів")
+        await msg.answer("Немає активних розіграшів.")
         return
-    response = "🎁 Розіграші:\n"
+    response = "🎁 Активні розіграші:\n"
     for g in gvs:
-        response += f"{g[0]}: {g[1]}\n"
+        days_left = max(0, int((g[3] - int(time.time())) / 86400))
+        response += f"ID: {g[0]} | {g[1]} | закінчення через {days_left} днів\n"
     await msg.answer(response)
 
-# ---------------- Повідомлення ----------------
-@dp.message()
-async def all_messages(msg: types.Message):
-    uid = msg.from_user.id
-    text = msg.text
-    admins = get_all_admins()
+# ----------------- /join -----------------
+@dp.message(Command("join"))
+async def cmd_join(msg: types.Message):
+    username = msg.from_user.username or f"user{msg.from_user.id}"
+    try:
+        gid = int(msg.text.split()[1])
+        g = get_giveaway_by_id(gid)
+        if not g:
+            await msg.answer("❌ Розіграш з таким ID не знайдено.")
+            return
+        join_giveaway(username, gid)
+        await msg.answer(f"✅ Ви приєдналися до розіграшу: {g[1]}")
+    except:
+        await msg.answer("❌ Використання: /join <id>")
 
-    # Адмін відповідає користувачу
-    if uid in reply_mode:
-        target_uid = reply_mode[uid]
-        await bot.send_message(target_uid, f"✉️ Від адміністратора:\n{text}")
-        await msg.answer("✅ Відповідь надіслана")
-        reply_mode.pop(uid)
+# ----------------- /ahelp (для адмінів) -----------------
+@dp.message(Command("ahelp"))
+async def cmd_ahelp(msg: types.Message):
+    username = msg.from_user.username or f"user{msg.from_user.id}"
+    if username not in get_all_admins():
+        await msg.answer("❌ Ця команда доступна лише адміністраторам.")
+        return
+    commands = [
+        "/ahelp — список команд адміністратора",
+        "/creategiveaway <назва> <дні> — створити розіграш",
+        "/participants <id> — список учасників розіграшу",
+        "/winner <id> — обрати переможця",
+        "/addadmin <username> — додати адміна",
+        "/removeadmin <username> — видалити адміна",
+        "/giveaways — перегляд розіграшів",
+        "/reply <username> — відповісти користувачу"
+    ]
+    await msg.answer("⚙️ Доступні команди:\n" + "\n".join(commands))
+
+# ----------------- Адмінські команди -----------------
+@dp.message()
+async def admin_commands(msg: types.Message):
+    username = msg.from_user.username or f"user{msg.from_user.id}"
+    if username not in get_all_admins():
         return
 
-    # Адмінські команди
-    if uid in admins:
-        if text == "/ahelp":
-            commands = [
-                "/ahelp — показати список команд адміна",
-                "/reply <id> — відповісти користувачу",
-                "/giveaways — перегляд розіграшів"
-            ]
-            if uid == MAIN_ADMIN_ID:
-                commands += [
-                    "/addadmin <id> — додати адміна",
-                    "/removeadmin <id> — видалити адміна",
-                    "/create <назва> — створити розіграш"
-                ]
-            await msg.answer("⚙️ Доступні команди:\n" + "\n".join(commands))
+    text = msg.text
+    args = text.split()
+
+    if text.startswith("/creategiveaway"):
+        if len(args) < 3:
+            await msg.answer("❌ Використання: /creategiveaway <назва> <кількість днів>")
             return
-
-        if uid == MAIN_ADMIN_ID:
-            if text.startswith("/addadmin"):
-                try:
-                    new_id = int(text.split()[1])
-                    add_admin(new_id)
-                    await msg.answer(f"✅ Користувач {new_id} став адміном")
-                except:
-                    await msg.answer("❌ Використовуй /addadmin <id> правильно")
-                return
-
-            if text.startswith("/removeadmin"):
-                try:
-                    rem_id = int(text.split()[1])
-                    remove_admin(rem_id)
-                    await msg.answer(f"✅ Адмін {rem_id} видалений")
-                except:
-                    await msg.answer("❌ Використовуй /removeadmin <id> правильно")
-                return
-
-            if text.startswith("/create"):
-                title = text.replace("/create","").strip()
-                if not title:
-                    await msg.answer("❌ Вкажи назву розіграшу")
-                    return
-                create_giveaway(title)
-                await msg.answer(f"🎁 Розіграш створено: {title}")
-                return
-
-        if text.startswith("/reply"):
-            try:
-                target = int(text.split()[1])
-                reply_mode[uid] = target
-                await msg.answer(f"✍️ Надішли текст для відповіді користувачу {target}")
-            except:
-                await msg.answer("❌ Використовуй /reply <id> правильно")
+        title = " ".join(args[1:-1])
+        try:
+            days = int(args[-1])
+        except:
+            await msg.answer("❌ Кількість днів має бути числом.")
             return
+        end_time = int(time.time()) + days * 86400
+        gid = create_giveaway(title, username, end_time)
+        await msg.answer(f"🎁 Розіграш створено: {title} (ID: {gid})\nЗакінчення через {days} днів")
+        for u in get_all_users():
+            await bot.send_message(u, f"🎉 Новий розіграш: {title} (ID: {gid})!\nПриєднатись: /join {gid}\nЗакінчення через {days} днів")
 
-    # Звичайне повідомлення користувача → надсилаємо всім адмінам
-    if uid not in admins:
-        for admin in admins:
-            await bot.send_message(
-                admin,
-                f"📩 Повідомлення від @{msg.from_user.username or 'NoName'}\n🆔 {uid}\n\n{text}"
-            )
-        await msg.answer("✅ Повідомлення надіслано адміну")
+    elif text.startswith("/participants"):
+        if len(args) < 2:
+            await msg.answer("❌ Використання: /participants <id>")
+            return
+        try:
+            gid = int(args[1])
+        except:
+            await msg.answer("❌ ID має бути числом.")
+            return
+        participants = get_giveaway_participants(gid)
+        await msg.answer(f"👥 Учасники ({len(participants)}):\n" + "\n".join(participants))
 
-# ---------------- Запуск ----------------
+    elif text.startswith("/winner"):
+        if len(args) < 2:
+            await msg.answer("❌ Використання: /winner <id>")
+            return
+        try:
+            gid = int(args[1])
+        except:
+            await msg.answer("❌ ID має бути числом.")
+            return
+        participants = get_giveaway_participants(gid)
+        if not participants:
+            await msg.answer("❌ Немає учасників.")
+            return
+        winner = random.choice(participants)
+        await msg.answer(f"🏆 Переможець розіграшу {gid}: @{winner}")
+        for u in participants:
+            await bot.send_message(u, f"🏆 Переможець розіграшу {gid}: @{winner}")
+
+    elif text.startswith("/addadmin"):
+        if username != MAIN_ADMIN_USERNAME:
+            await msg.answer("❌ Тільки головний адмін може додавати адміністраторів")
+            return
+        if len(args) < 2:
+            await msg.answer("❌ Використання: /addadmin <username>")
+            return
+        new_admin = args[1].replace("@","")
+        add_admin(new_admin)
+        await msg.answer(f"✅ @{new_admin} додано як адміністратора")
+
+    elif text.startswith("/removeadmin"):
+        if username != MAIN_ADMIN_USERNAME:
+            await msg.answer("❌ Тільки головний адмін може видаляти адміністраторів")
+            return
+        if len(args) < 2:
+            await msg.answer("❌ Використання: /removeadmin <username>")
+            return
+        remove_admin(args[1].replace("@",""))
+        await msg.answer(f"✅ @{args[1]} видалено з адмінів")
+
+# ----------------- Запуск -----------------
 async def main():
-    print("Bot started")
+    print("Bot is running...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

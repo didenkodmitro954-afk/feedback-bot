@@ -16,7 +16,6 @@ dp = Dispatcher()
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cur = conn.cursor()
 
-# Таблиці
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -91,7 +90,7 @@ def close_ticket(username):
     cur.execute("DELETE FROM tickets WHERE username=?", (username,))
     conn.commit()
 
-# ---------------- КОМАНДА START ----------------
+# ---------------- START ----------------
 @dp.message(Command("start"))
 async def start(msg: types.Message):
     add_user(msg.from_user.id, msg.from_user.username)
@@ -105,10 +104,11 @@ async def start(msg: types.Message):
     )
     await msg.answer(welcome_text)
 
-    # Повідомлення адмінам про нового користувача
+    # Повідомлення адмінам про нових користувачів
     new_users = get_new_users()
     for user_id, username in new_users:
         for admin in get_admins():
+            # Шукаємо user_id адміна
             cur.execute("SELECT user_id FROM users WHERE username=?", (admin,))
             res = cur.fetchone()
             if res:
@@ -116,8 +116,7 @@ async def start(msg: types.Message):
                 if admin_id != user_id:
                     try:
                         await bot.send_message(admin_id,
-                                               f"🆕 Новий користувач зареєстрований!\n"
-                                               f"👤 @{username}")
+                                               f"🆕 Новий користувач зареєстрований!\n👤 @{username}")
                     except: pass
         mark_notified(user_id)
 
@@ -134,7 +133,7 @@ async def ticket(msg: types.Message):
     create_ticket(msg.from_user.username)
     await msg.answer("✅ Ваш тікет відкрито! Ви можете писати сюди без команд, поки тікет не буде закрито.")
 
-    # Повідомлення всім адмінам
+    # Надсилаємо всім адмінам повідомлення про новий тікет
     for admin in get_admins():
         cur.execute("SELECT user_id FROM users WHERE username=?", (admin,))
         res = cur.fetchone()
@@ -159,7 +158,6 @@ async def free_ticket_chat(msg: types.Message):
             if res:
                 await bot.send_message(res[0], f"💬 @{username}: {msg.text}")
         else:
-            # Якщо ще ніхто не взяв, надсилаємо всім адмінам
             for admin in get_admins():
                 cur.execute("SELECT user_id FROM users WHERE username=?", (admin,))
                 res = cur.fetchone()

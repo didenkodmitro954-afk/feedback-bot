@@ -102,6 +102,8 @@ async def start(msg: types.Message):
 
     # Повідомлення адмінам один раз
     if not was_notified(msg.from_user.username):
+        cur.execute("SELECT user_id FROM users WHERE username=?", (msg.from_user.username,))
+        user_id = cur.fetchone()[0]
         for admin in get_admins():
             admin_id = get_user_id(admin)
             if admin_id:
@@ -231,11 +233,10 @@ async def close_raffle(msg: types.Message):
 # ---------------- ЗВОРОТНИЙ ЗВ'ЯЗОК ----------------
 @dp.message()
 async def feedback(msg: types.Message):
-    # Повідомлення користувачем
     if is_admin(msg.from_user.username):
         return
     add_user(msg.from_user.id, msg.from_user.username)
-    await msg.answer("💌 Ваше повідомлення отримано! Адміністратор незабаром відповість.")
+    # Повідомлення всім адмінам
     for admin in get_admins():
         admin_id = get_user_id(admin)
         if admin_id:
@@ -243,6 +244,7 @@ async def feedback(msg: types.Message):
                 await bot.send_message(admin_id,
                                        f"📩 Нове повідомлення від @{msg.from_user.username}:\n\n{msg.text}")
             except: pass
+    await msg.answer("💌 Ваше повідомлення отримано! Адміністратор незабаром відповість.")
 
 # ---------------- ЗАПУСК ----------------
 async def main():

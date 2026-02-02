@@ -6,7 +6,7 @@ from aiogram.filters import Command
 from database import *
 
 # ----------------- Налаштування -----------------
-TOKEN = "ТУТ_ВСТАВ_СВІЙ_ТОКЕН"  # <-- твій токен
+TOKEN = "8468725441:AAFTU2RJfOH3Eo__nJtEw1NqUbj5Eu3cTUE"  # <-- твій токен
 MAIN_ADMIN_USERNAME = "userveesna"  # твій username без @
 
 bot = Bot(token=TOKEN)

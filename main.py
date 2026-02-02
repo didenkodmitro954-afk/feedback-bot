@@ -67,6 +67,14 @@ def get_user_id(username):
     res = cur.fetchone()
     return res[0] if res else None
 
+def add_admin(username):
+    cur.execute("INSERT OR IGNORE INTO admins (username) VALUES (?)", (username,))
+    conn.commit()
+
+def del_admin(username):
+    cur.execute("DELETE FROM admins WHERE username=?", (username,))
+    conn.commit()
+
 # --- START ---
 @dp.message(Command("start"))
 async def start(msg: types.Message):
@@ -98,7 +106,41 @@ async def start(msg: types.Message):
                 except: pass
         mark_notified(msg.from_user.username)
 
-# --- ВІДПОВІДЬ АДМІНА ---
+# --- АДМІН-КОМАНДИ ---
+@dp.message(Command("ahelp"))
+async def ahelp(msg: types.Message):
+    if not is_admin(msg.from_user.username):
+        return
+    await msg.answer(
+        "⚙️ Команди адміністратора:\n"
+        "/ahelp — список команд\n"
+        "/addadmin @username — додати адміна\n"
+        "/deladmin @username — видалити адміна\n"
+        "/reply @username Текст — відповісти користувачу"
+    )
+
+@dp.message(Command("addadmin"))
+async def add_admin_cmd(msg: types.Message):
+    if msg.from_user.username != OWNER_USERNAME:
+        return
+    try:
+        username = msg.text.split()[1].replace("@", "")
+        add_admin(username)
+        await msg.answer(f"✅ @{username} доданий як адмін")
+    except:
+        await msg.answer("❌ Використання: /addadmin @username")
+
+@dp.message(Command("deladmin"))
+async def del_admin_cmd(msg: types.Message):
+    if msg.from_user.username != OWNER_USERNAME:
+        return
+    try:
+        username = msg.text.split()[1].replace("@", "")
+        del_admin(username)
+        await msg.answer(f"✅ @{username} видалений з адмінів")
+    except:
+        await msg.answer("❌ Використання: /deladmin @username")
+
 @dp.message(Command("reply"))
 async def reply(msg: types.Message):
     if not is_admin(msg.from_user.username):

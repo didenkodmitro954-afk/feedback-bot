@@ -22,7 +22,8 @@ cur = conn.cursor()
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    username TEXT UNIQUE
+    username TEXT UNIQUE,
+    notified INTEGER DEFAULT 0
 )
 """)
 cur.execute("""
@@ -55,6 +56,15 @@ conn.commit()
 def add_user(user_id, username):
     cur.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?,?)", (user_id, username))
     conn.commit()
+
+def mark_notified(username):
+    cur.execute("UPDATE users SET notified=1 WHERE username=?", (username,))
+    conn.commit()
+
+def was_notified(username):
+    cur.execute("SELECT notified FROM users WHERE username=?", (username,))
+    res = cur.fetchone()
+    return res[0] == 1 if res else False
 
 def add_admin(username):
     cur.execute("INSERT OR IGNORE INTO admins VALUES (?)", (username,))
@@ -90,6 +100,20 @@ async def start(msg: types.Message):
     )
     await msg.answer(welcome_text)
 
+    # Повідомлення адмінам один раз
+    if not was_notified(msg.from_user.username):
+        for admin in get_admins():
+            admin_id = get_user_id(admin)
+            if admin_id:
+                try:
+                    await bot.send_message(admin_id,
+                                           f"🆕 Новий користувач зареєстрований!\n"
+                                           f"👤 Username: @{msg.from_user.username}\n"
+                                           f"🆔 ID: {msg.from_user.id}\n"
+                                           f"⏰ Зареєстрований: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
+                except: pass
+        mark_notified(msg.from_user.username)
+
 # ---------------- АДМІН КОМАНДИ ----------------
 @dp.message(Command("ahelp"))
 async def ahelp(msg: types.Message):
@@ -102,6 +126,7 @@ async def ahelp(msg: types.Message):
         "/deladmin @username — видалити адміна\n"
         "/createraffle Назва | Опис | Кількість днів — створити розіграш\n"
         "/closeraffle <raffle_id> — закрити розіграш та оголосити переможця\n"
+        "/reply @username Текст — відповісти користувачу напряму"
     )
 
 @dp.message(Command("addadmin"))
@@ -125,6 +150,24 @@ async def del_admin_cmd(msg: types.Message):
         await msg.answer(f"✅ @{username} видалений з адмінів")
     except:
         await msg.answer("❌ Використання: /deladmin @username")
+
+# ---------------- ВІДПОВІДЬ АДМІНА ----------------
+@dp.message(Command("reply"))
+async def reply(msg: types.Message):
+    if not is_admin(msg.from_user.username):
+        return
+    try:
+        parts = msg.text.split(" ", 2)
+        username = parts[1].replace("@", "")
+        reply_text = parts[2]
+        user_id = get_user_id(username)
+        if user_id:
+            await bot.send_message(user_id, f"💬 Відповідь адміністратора:\n\n{reply_text}")
+            await msg.answer(f"✅ Повідомлення надіслано @{username}")
+        else:
+            await msg.answer("❌ Користувач не знайдений")
+    except:
+        await msg.answer("❌ Використання: /reply @username Текст")
 
 # ---------------- РОЗІГРАШ ----------------
 @dp.message(Command("createraffle"))
@@ -190,9 +233,9 @@ async def close_raffle(msg: types.Message):
 async def feedback(msg: types.Message):
     # Повідомлення користувачем
     if is_admin(msg.from_user.username):
-        return  # адміністратор пише — нічого не робимо
+        return
     add_user(msg.from_user.id, msg.from_user.username)
-    await msg.answer("✅ Ваше повідомлення отримано! Очікуйте відповіді адміністратора.")
+    await msg.answer("💌 Ваше повідомлення отримано! Адміністратор незабаром відповість.")
     for admin in get_admins():
         admin_id = get_user_id(admin)
         if admin_id:

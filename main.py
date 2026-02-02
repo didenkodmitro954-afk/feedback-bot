@@ -3,11 +3,17 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from database import *
 
+# Твій Telegram ID — головний адмін
+MAIN_ADMIN_ID = 1540349061
+
 TOKEN = os.getenv("BOT_TOKEN")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
 reply_mode = {}  # якщо адмін відповідає користувачу
+
+# ---------------- Додати головного адміна ----------------
+add_admin(MAIN_ADMIN_ID)
 
 # ---------------- /start ----------------
 @dp.message()
@@ -20,11 +26,18 @@ async def start_handler(msg: types.Message):
         # повідомляємо всім адмінам
         admins = get_all_admins()
         for admin in admins:
-            await bot.send_message(admin, f"🆕 Новий користувач зареєструвався:\n👤 @{username}\n🆔 {uid}")
+            await bot.send_message(
+                admin,
+                f"🆕 Новий користувач зареєструвався!\n"
+                f"👤 Username: @{username}\n"
+                f"🆔 ID: {uid}"
+            )
 
+        # повідомлення користувачу
         await msg.answer(
             f"👋 Привіт, {username}!\n"
-            "Ти можеш надіслати повідомлення адміну нижче ⬇️"
+            "Ти можеш надіслати мені повідомлення, і наші адміни його отримають.\n"
+            "Напиши щось нижче ⬇️"
         )
 
 # ---------------- Повідомлення ----------------
@@ -44,36 +57,42 @@ async def message_handler(msg: types.Message):
 
     # Адмін-команди
     if uid in admins:
+        # всі адміни бачать /ahelp
         if text == "/ahelp":
-            await msg.answer(
-                "⚙️ Список команд адміна:\n"
-                "/ahelp — показати список команд адміна\n"
-                "/addadmin <id> — додати адміна\n"
-                "/removeadmin <id> — видалити адміна\n"
-                "/reply <id> — відповісти користувачу\n"
-                "/create <назва> — створити розіграш\n"
-                "/giveaways — список розіграшів\n"
-            )
+            commands = [
+                "/ahelp — показати список команд адміна",
+                "/reply <id> — відповісти користувачу",
+            ]
+            # якщо головний адмін — додаємо команди для управління адмінами
+            if uid == MAIN_ADMIN_ID:
+                commands += [
+                    "/addadmin <id> — додати адміна",
+                    "/removeadmin <id> — видалити адміна"
+                ]
+            await msg.answer("⚙️ Доступні команди:\n" + "\n".join(commands))
             return
 
-        if text.startswith("/addadmin"):
-            try:
-                new_id = int(text.split()[1])
-                add_admin(new_id)
-                await msg.answer(f"✅ Користувач {new_id} став адміном")
-            except:
-                await msg.answer("❌ Використовуй /addadmin <id> правильно")
-            return
+        # тільки головний адмін може додавати/видаляти інших адмінів
+        if uid == MAIN_ADMIN_ID:
+            if text.startswith("/addadmin"):
+                try:
+                    new_id = int(text.split()[1])
+                    add_admin(new_id)
+                    await msg.answer(f"✅ Користувач {new_id} став адміном")
+                except:
+                    await msg.answer("❌ Використовуй /addadmin <id> правильно")
+                return
 
-        if text.startswith("/removeadmin"):
-            try:
-                rem_id = int(text.split()[1])
-                remove_admin(rem_id)
-                await msg.answer(f"✅ Адмін {rem_id} видалений")
-            except:
-                await msg.answer("❌ Використовуй /removeadmin <id> правильно")
-            return
+            if text.startswith("/removeadmin"):
+                try:
+                    rem_id = int(text.split()[1])
+                    remove_admin(rem_id)
+                    await msg.answer(f"✅ Адмін {rem_id} видалений")
+                except:
+                    await msg.answer("❌ Використовуй /removeadmin <id> правильно")
+                return
 
+        # всі адміни можуть відповісти користувачу
         if text.startswith("/reply"):
             try:
                 target = int(text.split()[1])
@@ -81,26 +100,6 @@ async def message_handler(msg: types.Message):
                 await msg.answer(f"✍️ Надішли текст для відповіді користувачу {target}")
             except:
                 await msg.answer("❌ Використовуй /reply <id> правильно")
-            return
-
-        if text.startswith("/create"):
-            title = text.replace("/create","").strip()
-            if not title:
-                await msg.answer("❌ Вкажи назву розіграшу")
-                return
-            create_giveaway(title)
-            await msg.answer(f"🎁 Розіграш створено: {title}")
-            return
-
-        if text == "/giveaways":
-            gvs = get_giveaways()
-            if not gvs:
-                await msg.answer("Немає розіграшів")
-                return
-            response = "🎁 Розіграші:\n"
-            for g in gvs:
-                response += f"{g[0]}: {g[1]}\n"
-            await msg.answer(response)
             return
 
     # Звичайне повідомлення користувача → пересилаємо всім адмінам
@@ -118,4 +117,4 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())              
+    asyncio.run(main())

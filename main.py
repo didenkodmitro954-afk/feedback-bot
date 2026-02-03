@@ -6,8 +6,8 @@ import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 
-# =======8511337609:AAFNtvQWoD4rhyYugouVgsspw0FKorm-rDM========== НАСТРОЙКИ =================
-TOKEN = ""
+# ================= НАСТРОЙКИ =================
+TOKEN = "8511337609:AAFNtvQWoD4rhyYugouVgsspw0FKorm-rDM"
 OWNER_USERNAME = "userveesna"
 
 logging.basicConfig(level=logging.INFO)

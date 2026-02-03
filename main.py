@@ -299,16 +299,28 @@ async def user_msg(msg: types.Message):
     if is_admin(msg.from_user.username):
         return
     await msg.answer("✅ Повідомлення надіслано адміністрації")
+    
     ticket = get_ticket(msg.from_user.id)
     if ticket and time.time() - ticket[2] > 1800:
         close_ticket(msg.from_user.id)
         ticket = None
+
     for admin in get_admins():
         if ticket and admin != ticket[0]:
             continue
         uid = get_user_id(admin)
-        if uid:
+        if not uid:
+            continue
+
+        # Текстове повідомлення
+        if msg.text:
             await bot.send_message(uid, f"📩 @{msg.from_user.username}:\n{msg.text}")
+
+        # Фото
+        if msg.photo:
+            largest_photo = msg.photo[-1]  # беремо найбільшу версію
+            caption = msg.caption if msg.caption else ""
+            await bot.send_photo(uid, largest_photo.file_id, caption=f"📩 @{msg.from_user.username}:\n{caption}")
 
 # ================= Запуск =================
 async def main():
